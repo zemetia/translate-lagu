@@ -34,18 +34,7 @@ import {
   X,
   Link as LinkIcon,
 } from "lucide-react";
-
-interface SongCandidate {
-  songTitle: string;
-  artist: string;
-}
-
-interface SongData {
-  songTitle: string;
-  artist: string;
-  lyrics: string;
-  sourceUrl?: string;
-}
+import type { SongCandidate, SongDataWithUrl } from "@/ai/schemas";
 
 interface TranslationResult {
   original: string;
@@ -60,7 +49,7 @@ export function TranslationClient() {
   const [searchResults, setSearchResults] = useState<SongCandidate[] | null>(
     null
   );
-  const [selectedSong, setSelectedSong] = useState<SongData | null>(null);
+  const [selectedSong, setSelectedSong] = useState<SongDataWithUrl | null>(null);
   const [translation, setTranslation] = useState<TranslationResult | null>(
     null
   );

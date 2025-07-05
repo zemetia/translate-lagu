@@ -4,24 +4,15 @@
  * @fileOverview A lyrics translation AI agent.
  *
  * - translateLyrics - A function that handles the lyrics translation process.
- * - TranslateLyricsInput - The input type for the translateLyrics function.
- * - TranslateLyricsOutput - The return type for the translateLyrics function.
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'zod';
-
-const TranslateLyricsInputSchema = z.object({
-  lyrics: z.string().describe('The lyrics to translate.'),
-});
-export type TranslateLyricsInput = z.infer<typeof TranslateLyricsInputSchema>;
-
-const TranslateLyricsOutputSchema = z.object({
-  translatedLyrics: z.string().describe('The translated lyrics, with original and translated text interleaved using {tl} tags.'),
-  translationStyle: z.string().describe("The detected nuance or style of the lyrics (e.g., Poetic, Hymn, Formal, Literal)."),
-  originalLyrics: z.string().describe('The original lyrics that were translated.'),
-});
-export type TranslateLyricsOutput = z.infer<typeof TranslateLyricsOutputSchema>;
+import {
+  TranslateLyricsInput,
+  TranslateLyricsInputSchema,
+  TranslateLyricsOutput,
+  TranslateLyricsOutputSchema,
+} from '../schemas';
 
 export async function translateLyrics(input: TranslateLyricsInput): Promise<TranslateLyricsOutput> {
   if (!input.lyrics) {

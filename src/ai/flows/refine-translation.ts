@@ -5,34 +5,15 @@
  * @fileOverview A flow for refining machine translations based on user prompts.
  *
  * - refineTranslation - A function that refines an existing translation using AI and user prompts.
- * - RefineTranslationInput - The input type for the refineTranslation function.
- * - RefineTranslationOutput - The return type for the refineTranslation function.
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const RefineTranslationInputSchema = z.object({
-  originalText: z
-    .string()
-    .describe('The original text that was translated.'),
-  initialTranslation: z
-    .string()
-    .describe('The initial machine translation to be refined. This includes {tl} tags.'),
-  refinementPrompt: z
-    .string()
-    .describe(
-      'A prompt from the user providing instructions on how to refine the translation (e.g., make it more poetic, more literal, etc.).'
-    ),
-});
-export type RefineTranslationInput = z.infer<typeof RefineTranslationInputSchema>;
-
-const RefineTranslationOutputSchema = z.object({
-  refinedTranslation: z
-    .string()
-    .describe('The refined translation based on the user prompt, maintaining the {tl} format.'),
-});
-export type RefineTranslationOutput = z.infer<typeof RefineTranslationOutputSchema>;
+import {
+  RefineTranslationInput,
+  RefineTranslationInputSchema,
+  RefineTranslationOutput,
+  RefineTranslationOutputSchema,
+} from '../schemas';
 
 export async function refineTranslation(
   input: RefineTranslationInput

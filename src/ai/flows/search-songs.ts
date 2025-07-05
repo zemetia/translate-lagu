@@ -10,53 +10,18 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
 import { fetchUrlContent } from '../tools/search-lyrics';
-
-// --- SCHEMAS ---
-
-// Input for the initial search
-const SearchSongsInputSchema = z.object({
-  query: z.string().describe('The song title, artist, or lyrics to search for.'),
-});
-export type SearchSongsInput = z.infer<typeof SearchSongsInputSchema>;
-
-// Output for the initial search: a list of candidates
-const SongCandidateSchema = z.object({
-  songTitle: z.string().describe("The title of the song."),
-  artist: z.string().describe("The artist, composer, or writer of the song."),
-});
-export const SearchSongCandidatesOutputSchema = z.object({
-    results: z.array(SongCandidateSchema).describe('A list of potential matching songs found.'),
-});
-export type SearchSongCandidatesOutput = z.infer<typeof SearchSongCandidatesOutputSchema>;
-
-// Input for fetching lyrics for a specific song
-const GetLyricsInputSchema = z.object({
-    songTitle: z.string().describe('The title of the song to find lyrics for.'),
-    artist: z.string().describe('The artist of the song.'),
-});
-export type GetLyricsInput = z.infer<typeof GetLyricsInputSchema>;
-
-// A full song object, including lyrics
-const SongDataSchema = z.object({
-  songTitle: z.string().describe("The title of the song. If not found, return an empty string."),
-  artist: z.string().describe("The artist, composer, or writer of the song. If not found, return 'Unknown'."),
-  lyrics: z.string().describe("The full lyrics of the song extracted from the page. Section markers like [Verse 1], [Chorus] should be preserved. If not found, return an empty string."),
-});
-export type SongData = z.infer<typeof SongDataSchema>;
-
-const SongDataWithUrlSchema = SongDataSchema.extend({
-    sourceUrl: z.string().url().describe("The source URL where the lyrics were found.")
-});
-export type SongDataWithUrl = z.infer<typeof SongDataWithUrlSchema>;
-
-
-// Input for extracting from a URL
-const ExtractSongFromUrlInputSchema = z.object({
-  url: z.string().url().describe('The URL of the song page to process.'),
-});
-export type ExtractSongFromUrlInput = z.infer<typeof ExtractSongFromUrlInputSchema>;
-export type ExtractSongFromUrlOutput = z.infer<typeof SongDataWithUrlSchema>;
-
+import {
+  SearchSongsInput,
+  SearchSongCandidatesOutput,
+  GetLyricsInput,
+  SongDataWithUrl,
+  ExtractSongFromUrlInput,
+  ExtractSongFromUrlOutput,
+  SearchSongsInputSchema,
+  SearchSongCandidatesOutputSchema,
+  GetLyricsInputSchema,
+  SongDataSchema,
+} from '../schemas';
 
 // --- PROMPTS ---
 
