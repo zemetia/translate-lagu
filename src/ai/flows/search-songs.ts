@@ -37,14 +37,14 @@ const searchPrompt = ai.definePrompt({
     name: 'searchSongsPrompt',
     input: { schema: SearchSongsInputSchema },
     output: { schema: SearchSongsOutputSchema },
-    prompt: `You are a song lyric search engine. Your knowledge base contains lyrics for millions of songs.
-A user has provided a query. Find up to 3 songs that match this query. For each song, you MUST provide the song title, the artist, and the lyrics.
+    prompt: `You are an expert song lyric search engine. Your task is to find lyrics for a user's query by searching the web.
 
-IMPORTANT RULES FOR LYRICS:
-1.  **Originality is Key**: You MUST return the lyrics exactly as they are found. Do not add, remove, or change any words. Preserve the original structure and content perfectly.
-2.  **Remove Repeated Sections**: After finding the lyrics, process them to remove any fully repeated sections. For example, if a chorus appears three times, only include it ONCE in the output. However, you MUST keep all unique sections, such as Verse 1, Verse 2, Bridge, etc., even if they are structurally similar. The goal is a condensed version with only the unique parts of the song.
-
-If the query is very specific and you are highly confident in a single result (e.g., the query includes both title and artist), return just that one song. If the query is ambiguous (e.g., just a common title), provide a few different popular versions.
+1.  Take the user's query and perform a web search to find the most reliable and accurate website containing the song lyrics.
+2.  From that website, extract the song title, the artist, and the full lyrics.
+3.  When processing the lyrics, follow these critical rules:
+    a.  **Preserve Originality**: The lyrics you return must be exactly as they are on the source website. Do not add, change, or interpret the words.
+    b.  **Consolidate Repeats**: Identify and remove fully repeated sections. For example, if a chorus is sung three times, only include its text once. However, you must keep all unique sections like verses, bridges, etc. The goal is to return a unique, non-repeated version of the lyrics.
+4.  If you are very confident in the result (e.g., the query was specific), return just one song. If the query is ambiguous, you can return up to 3 popular results that match.
 
 User Query: {{{query}}}
 
