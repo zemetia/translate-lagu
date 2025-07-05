@@ -95,15 +95,22 @@ const extractPrompt = ai.definePrompt({
 
 Your process is as follows:
 1.  You will use the 'fetchUrlContent' tool to get the raw text content of the webpage at the given URL.
-2.  **IMPORTANT**: This raw text will include noise like navigation menus, ads, footers, and other boilerplate text. Your primary task is to intelligently identify and isolate the main content of the page, which contains the song information. Discard all irrelevant text.
-3.  From the isolated main content, extract the following three pieces of information:
-    a.  **songTitle**: The title of the song.
-    b.  **artist**: The name of the artist, composer, or writer.
-    c.  **lyrics**: The full lyrics of the song. Preserve section markers like [Verse 1] and [Chorus].
+2.  From the raw text returned by the tool, you will extract three pieces of information: songTitle, artist, and lyrics.
+3.  When processing the text to find the lyrics, you must follow these strict rules:
+    a.  **Identify and Isolate**: Your primary task is to intelligently identify and isolate the song lyrics from the surrounding text.
+    b.  **Remove Boilerplate**: Discard all irrelevant non-lyric content, such as website navigation, advertisements, article headers/footers, related links, and comment sections.
+    c.  **Preserve Original Words**: You MUST NOT add, change, or interpret the words of the lyrics. The output must be a direct transcription of the original song words.
+    d.  **Clean Formatting**:
+        - Remove any numerical line markers (e.g., "1.", "2.").
+        - Ensure there is only a single blank line between sections (like verses or choruses).
+        - Preserve and standardize common markers like [Chorus], [Verse 1], and [Bridge]. Do not invent these markers if they are not present in the original text.
 4.  Return the extracted information in the specified JSON format. If a piece of information cannot be reliably found, return an empty string for the title/lyrics or 'Unknown' for the artist.
 
 URL to process: {{{url}}}
 `,
+  config: {
+    temperature: 0.2,
+  },
 });
 
 const extractSongFromUrlFlow = ai.defineFlow(
