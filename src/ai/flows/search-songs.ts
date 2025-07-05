@@ -69,7 +69,7 @@ Raw Text Input:
 const findUrlPrompt = ai.definePrompt({
     name: 'findSongUrlPrompt',
     input: { schema: SearchSongsInputSchema },
-    output: { schema: z.object({ url: z.string().url().describe("The single most reliable public URL for the song lyrics.") }) },
+    output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics.") }) },
     prompt: `You are a web search expert. Given the user's query for a song, find the single best and most reliable public URL that contains the lyrics. Prioritize dedicated lyric websites (like genius.com, azlyrics.com, etc.). Do not return URLs from YouTube, Spotify, or other streaming services.
 
 User Query: {{{query}}}
