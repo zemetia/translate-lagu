@@ -36,21 +36,21 @@ User Query: {{{query}}}
 Return a list of song candidates in the specified JSON format.`,
 });
 
-const findBestUrlFromSearchPrompt = ai.definePrompt({
-    name: 'findBestUrlFromSearchPrompt',
-    input: { schema: z.object({ searchResultsText: z.string() }) },
+const findBestUrlFromHtmlPrompt = ai.definePrompt({
+    name: 'findBestUrlFromHtmlPrompt',
+    input: { schema: z.object({ searchResultsHtml: z.string().describe("The raw HTML content from a DuckDuckGo search results page.") }) },
     output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics found in the search results.") }) },
-    prompt: `You are an AI assistant skilled at parsing web search results. Below is the raw text content from a search results page for song lyrics. Your task is to identify the single most reliable and trustworthy URL for the lyrics.
+    prompt: `You are an AI assistant skilled at parsing raw HTML from a search results page. Your task is to analyze the provided HTML and identify the single most reliable and trustworthy URL for song lyrics.
 
 **CRITICAL INSTRUCTIONS:**
-1.  Scan the provided text for URLs.
-2.  Prioritize URLs from dedicated lyric websites like genius.com, azlyrics.com, songlyrics.com, etc.
-3.  You MUST IGNORE URLs from YouTube, Spotify, Apple Music, or other music streaming services, as well as links to Google's own services.
-4.  From the valid lyric websites, choose the one that appears to be the most relevant and official result.
-5.  Return ONLY the single best URL you have found. Do not return any other text or explanation.
+1.  Examine the HTML for search result links, which are typically within \`<a>\` tags with a class like "result__a".
+2.  From these links, identify the one that points to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
+3.  You MUST IGNORE links to YouTube, Spotify, Apple Music, or other music streaming services. Also ignore ads or shopping results.
+4.  Choose the link that appears to be the most relevant and official result based on its title and snippet text in the HTML.
+5.  Return ONLY the single best URL you have found in the specified JSON format. Do not return any other text or explanation.
 
-Search Results Text:
-{{{searchResultsText}}}
+Search Results HTML:
+{{{searchResultsHtml}}}
 `,
 });
 
@@ -95,25 +95,25 @@ export async function searchSongCandidates(input: SearchSongsInput): Promise<Sea
 
 /**
  * Fetches the full lyrics for a given song title and artist by searching with DuckDuckGo,
- * finding a reliable URL, and then extracting the content.
+ * finding a reliable URL from the HTML, and then extracting the content.
  */
 export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
   // Step 1: Construct a search query.
   const searchQuery = `lyrics for ${input.songTitle} by ${input.artist}`;
-  const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
 
-  // Step 2: Fetch search results from DuckDuckGo.
-  const searchResultsText = await fetchUrlContent(searchUrl);
-  if (searchResultsText.startsWith('Error:')) {
-    throw new Error(`Failed to perform web search. ${searchResultsText}`);
+  // Step 2: Fetch the search results page content.
+  const searchResultsHtml = await fetchUrlContent(searchUrl);
+  if (searchResultsHtml.startsWith('Error:')) {
+      throw new Error(`Failed to fetch search results from DuckDuckGo. Details: ${searchResultsHtml}`);
   }
-  if (!searchResultsText) {
+  if (!searchResultsHtml) {
     throw new Error(`No web search results found for "${searchQuery}".`);
   }
 
-  // Step 3: Use AI to find the best URL from the search results.
-  const { output: urlOutput } = await findBestUrlFromSearchPrompt({
-    searchResultsText,
+  // Step 3: Use AI to find the best URL from the search results HTML.
+  const { output: urlOutput } = await findBestUrlFromHtmlPrompt({
+    searchResultsHtml: searchResultsHtml,
   });
   const lyricsUrl = urlOutput?.url;
   if (!lyricsUrl) {
