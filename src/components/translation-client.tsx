@@ -32,7 +32,7 @@ import {
   ListMusic,
   Copy,
   X,
-  Link,
+  Link as LinkIcon,
 } from "lucide-react";
 
 interface SongCandidate {
@@ -44,6 +44,7 @@ interface SongData {
   songTitle: string;
   artist: string;
   lyrics: string;
+  sourceUrl?: string;
 }
 
 interface TranslationResult {
@@ -132,6 +133,7 @@ export function TranslationClient() {
           songTitle: result.data.songTitle,
           artist: result.data.artist,
           lyrics: result.data.lyrics,
+          sourceUrl: result.data.sourceUrl,
         };
         setSelectedSong(songData);
         setLyrics(songData.lyrics);
@@ -159,6 +161,7 @@ export function TranslationClient() {
           songTitle: result.data.songTitle,
           artist: result.data.artist,
           lyrics: result.data.lyrics,
+          sourceUrl: result.data.sourceUrl,
         };
         setSelectedSong(songData);
         setLyrics(songData.lyrics);
@@ -273,11 +276,11 @@ export function TranslationClient() {
               <Tabs defaultValue="search" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="search" disabled={isLoading}>
-                    <Search className="mr-2" />
+                    <Search className="mr-2 h-4 w-4" />
                     Search
                   </TabsTrigger>
                   <TabsTrigger value="url" disabled={isLoading}>
-                    <Link className="mr-2" />
+                    <LinkIcon className="mr-2 h-4 w-4" />
                     From URL
                   </TabsTrigger>
                 </TabsList>
@@ -376,17 +379,31 @@ export function TranslationClient() {
               </CardTitle>
               {selectedSong ? (
                 <div className="flex items-center justify-between pt-2 text-sm">
-                  <div>
-                    <p className="font-bold">{selectedSong.songTitle}</p>
-                    <p className="text-muted-foreground">
+                  <div className="overflow-hidden">
+                    <p className="font-bold truncate">{selectedSong.songTitle}</p>
+                    <p className="text-muted-foreground truncate">
                       {selectedSong.artist}
                     </p>
+                    {selectedSong.sourceUrl && (
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                            Source:{" "}
+                            <a
+                                href={selectedSong.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-primary"
+                                title={selectedSong.sourceUrl}
+                            >
+                                {new URL(selectedSong.sourceUrl).hostname}
+                            </a>
+                        </p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={clearSelectedSong}
-                    className="h-8 w-8"
+                    className="h-8 w-8 flex-shrink-0 ml-2"
                   >
                     <X className="h-4 w-4" />
                     <span className="sr-only">Clear song and lyrics</span>

@@ -1,12 +1,12 @@
 "use server";
 
+import { refineTranslation } from "@/ai/flows/refine-translation";
 import {
-  refineTranslation,
-  searchSongCandidates,
-  getLyricsForSong,
-  translateLyrics,
   extractSongFromUrl,
-} from "@/ai/flows";
+  getLyricsForSong,
+  searchSongCandidates,
+} from "@/ai/flows/search-songs";
+import { translateLyrics } from "@/ai/flows/translate-lyrics";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -84,8 +84,9 @@ export async function handleTranslation(input: { lyrics?: string }) {
 const refineSchema = z.object({
   originalText: z.string(),
   initialTranslation: z.string(),
-  refinementPrompt:
-    z.string().min(3, "Please provide a more descriptive refinement prompt."),
+  refinementPrompt: z
+    .string()
+    .min(3, "Please provide a more descriptive refinement prompt."),
 });
 
 export async function handleRefinement(input: {

@@ -24,7 +24,7 @@ const SongCandidateSchema = z.object({
   songTitle: z.string().describe("The title of the song."),
   artist: z.string().describe("The artist, composer, or writer of the song."),
 });
-const SearchSongCandidatesOutputSchema = z.object({
+export const SearchSongCandidatesOutputSchema = z.object({
     results: z.array(SongCandidateSchema).describe('A list of potential matching songs found.'),
 });
 export type SearchSongCandidatesOutput = z.infer<typeof SearchSongCandidatesOutputSchema>;
@@ -44,12 +44,18 @@ const SongDataSchema = z.object({
 });
 export type SongData = z.infer<typeof SongDataSchema>;
 
+const SongDataWithUrlSchema = SongDataSchema.extend({
+    sourceUrl: z.string().url().describe("The source URL where the lyrics were found.")
+});
+export type SongDataWithUrl = z.infer<typeof SongDataWithUrlSchema>;
+
+
 // Input for extracting from a URL
 const ExtractSongFromUrlInputSchema = z.object({
   url: z.string().url().describe('The URL of the song page to process.'),
 });
 export type ExtractSongFromUrlInput = z.infer<typeof ExtractSongFromUrlInputSchema>;
-export type ExtractSongFromUrlOutput = z.infer<typeof SongDataSchema>;
+export type ExtractSongFromUrlOutput = z.infer<typeof SongDataWithUrlSchema>;
 
 
 // --- PROMPTS ---
@@ -119,30 +125,36 @@ export async function searchSongCandidates(input: SearchSongsInput): Promise<Sea
 /**
  * Fetches the full lyrics for a given song title and artist by finding a URL and extracting its content.
  */
-export async function getLyricsForSong(input: GetLyricsInput): Promise<SongData> {
+export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
   // Step 1: Use AI to find the best URL for the query.
   const { output: urlOutput } = await findUrlPrompt(input);
-  if (!urlOutput?.url) {
-      throw new Error("Could not find a reliable URL for this song.");
+  const url = urlOutput?.url;
+  if (!url) {
+      throw new Error("AI could not find a reliable URL for this song.");
   }
   
-  // Step 2: Fetch content from the URL.
-  const content = await fetchUrlContent(urlOutput.url);
-  if (content.startsWith('Error:')) {
-      throw new Error(content);
-  }
+  try {
+    // Step 2: Fetch content from the URL.
+    const content = await fetchUrlContent(url);
+    if (content.startsWith('Error:')) {
+        throw new Error(content);
+    }
 
-  // Step 3: Extract song data from the content.
-  const { output: songData } = await extractFromContentPrompt({ content });
-  if (!songData) {
-    throw new Error('The AI failed to extract song information from the provided URL.');
-  }
-  if (!songData.lyrics || !songData.songTitle) {
-    throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
-  }
+    // Step 3: Extract song data from the content.
+    const { output: songData } = await extractFromContentPrompt({ content });
+    if (!songData) {
+      throw new Error('The AI failed to extract song information from the page content.');
+    }
+    if (!songData.lyrics || !songData.songTitle) {
+      throw new Error('Could not find lyrics or title in the page content.');
+    }
 
-  // Step 4: Return the data.
-  return songData;
+    // Step 4: Return the data with the source URL.
+    return { ...songData, sourceUrl: url };
+  } catch(e: any) {
+    // If anything in the try block fails, we re-throw with the URL for debugging.
+    throw new Error(`Failed to process lyrics from ${url}. Reason: ${e.message}`);
+  }
 }
 
 
@@ -150,19 +162,24 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongData>
  * Extracts song information from a user-provided URL.
  */
 export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promise<ExtractSongFromUrlOutput> {
-  // Step 1: Fetch content using the regular function
-  const content = await fetchUrlContent(input.url);
-  if (content.startsWith('Error:')) {
-      throw new Error(content);
+  const { url } = input;
+  try {
+    // Step 1: Fetch content using the regular function
+    const content = await fetchUrlContent(url);
+    if (content.startsWith('Error:')) {
+        throw new Error(content);
+    }
+    
+    // Step 2: Extract data using the AI prompt
+    const { output } = await extractFromContentPrompt({ content });
+    if (!output) {
+      throw new Error('The AI failed to extract song information from the provided URL.');
+    }
+    if (!output.lyrics || !output.songTitle) {
+      throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
+    }
+    return { ...output, sourceUrl: url };
+  } catch(e: any) {
+    throw new Error(`Failed to process lyrics from ${url}. Reason: ${e.message}`);
   }
-  
-  // Step 2: Extract data using the AI prompt
-  const { output } = await extractFromContentPrompt({ content });
-  if (!output) {
-    throw new Error('The AI failed to extract song information from the provided URL.');
-  }
-  if (!output.lyrics || !output.songTitle) {
-    throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
-  }
-  return output;
 }
