@@ -37,14 +37,16 @@ const searchPrompt = ai.definePrompt({
     name: 'searchSongsPrompt',
     input: { schema: SearchSongsInputSchema },
     output: { schema: SearchSongsOutputSchema },
+    tools: [fetchUrlContentTool],
     prompt: `You are an expert song lyric search engine. Your task is to find lyrics for a user's query by searching the web.
 
-1.  Take the user's query and perform a web search to find the most reliable and accurate website containing the song lyrics.
-2.  From that website, extract the song title, the artist, and the full lyrics.
-3.  When processing the lyrics, follow these critical rules:
-    a.  **Preserve Originality**: The lyrics you return must be exactly as they are on the source website. Do not add, change, or interpret the words.
+1.  First, perform a web search using your built-in capabilities to find the most reliable and accurate website URL for the user's query.
+2.  Once you have a URL, use the 'fetchUrlContent' tool to get the raw text content from that webpage.
+3.  From the raw text returned by the tool, extract the song title, the artist, and the full lyrics.
+4.  When processing the lyrics, follow these critical rules:
+    a.  **Preserve Originality**: The lyrics you return must be exactly as they are on the source website. Do not add, change, or interpret the words. Remove all non-lyric boilerplate content like navigation, ads, and footers.
     b.  **Consolidate Repeats**: Identify and remove fully repeated sections. For example, if a chorus is sung three times, only include its text once. However, you must keep all unique sections like verses, bridges, etc. The goal is to return a unique, non-repeated version of the lyrics.
-4.  If you are very confident in the result (e.g., the query was specific), return just one song. If the query is ambiguous, you can return up to 3 popular results that match.
+5.  If you are very confident in the result (e.g., the query was specific), return just one song. If the query is ambiguous, you can return up to 3 popular results that match.
 
 User Query: {{{query}}}
 
