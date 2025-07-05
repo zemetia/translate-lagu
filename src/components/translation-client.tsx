@@ -53,6 +53,7 @@ export function TranslationClient() {
   const [translation, setTranslation] = useState<TranslationResult | null>(
     null
   );
+  const [lyricsEdited, setLyricsEdited] = useState(false);
 
   const [isSearching, startSearch] = useTransition();
   const [isFetchingLyrics, startFetchingLyrics] = useTransition();
@@ -126,6 +127,8 @@ export function TranslationClient() {
         };
         setSelectedSong(songData);
         setLyrics(songData.lyrics);
+        setLyricsEdited(false);
+        setTranslation(null);
         toast({ title: "Successfully extracted song!" });
       }
     });
@@ -155,6 +158,7 @@ export function TranslationClient() {
         setSelectedSong(songData);
         setLyrics(songData.lyrics);
         setTranslation(null);
+        setLyricsEdited(false);
         toast({ title: "Successfully fetched lyrics!" });
       }
     });
@@ -245,6 +249,7 @@ export function TranslationClient() {
     setLyrics("");
     setSelectedSong(null);
     setTranslation(null);
+    setLyricsEdited(false);
   };
 
   const isLoading = isSearching || isExtracting;
@@ -370,9 +375,16 @@ export function TranslationClient() {
                 <div className="flex items-center justify-between pt-2 text-sm">
                   <div className="overflow-hidden">
                     <p className="font-bold truncate">{selectedSong.songTitle}</p>
-                    <p className="text-muted-foreground truncate">
-                      {selectedSong.artist}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-muted-foreground truncate">
+                        {selectedSong.artist}
+                      </p>
+                      {lyricsEdited && (
+                        <Badge variant="outline" className="border-amber-500 text-amber-600 text-xs whitespace-nowrap">
+                          Edited
+                        </Badge>
+                      )}
+                    </div>
                     {selectedSong.sourceUrl && (
                         <p className="text-xs text-muted-foreground mt-1 truncate">
                             Source:{" "}
@@ -411,7 +423,9 @@ Amazing grace, how sweet the sound..."
                 value={lyrics}
                 onChange={(e) => {
                   setLyrics(e.target.value);
-                  if (selectedSong) setSelectedSong(null);
+                  if (selectedSong) {
+                    setLyricsEdited(true);
+                  }
                 }}
                 className="h-64 resize-y font-mono"
                 aria-label="Song lyrics input"
