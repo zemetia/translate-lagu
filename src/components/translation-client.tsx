@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useState, useTransition } from "react";
-import { handleSearch, handleTranslation, handleRefinement } from "@/app/actions";
+import { handleSearch, handleTranslation, handleRefinement, handleUrlExtraction } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LoaderCircle,
   Languages,
@@ -19,6 +20,7 @@ import {
   ListMusic,
   Copy,
   X,
+  Link,
 } from "lucide-react";
 
 interface SearchResult {
@@ -42,6 +44,7 @@ export function TranslationClient() {
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
   
   const [isSearching, startSearch] = useTransition();
+  const [isExtracting, startUrlExtraction] = useTransition();
   const [isTranslating, startTranslation] = useTransition();
   const [isRefining, startRefinement] = useTransition();
   
@@ -59,6 +62,7 @@ export function TranslationClient() {
     }
 
     startSearch(async () => {
+      setSearchResults(null);
       const result = await handleSearch(formData);
       if (result.error) {
         toast({ variant: "destructive", title: "Search Failed", description: result.error });
@@ -69,6 +73,37 @@ export function TranslationClient() {
             toast({ title: "No results found", description: "Try a different song title or artist." });
         }
       }
+    });
+  };
+
+  const onUrlExtract = (formData: FormData) => {
+    const url = formData.get("url") as string;
+    if (!url || !url.startsWith('http')) {
+        toast({
+            variant: "destructive",
+            title: "Invalid URL",
+            description: "Please enter a valid URL starting with http or https.",
+        });
+        return;
+    }
+    
+    startUrlExtraction(async () => {
+        setSearchResults(null);
+        setSelectedSong(null);
+        setLyrics('');
+        setTranslation(null);
+        const result = await handleUrlExtraction(formData);
+        if (result.error) {
+            toast({ variant: "destructive", title: "Extraction Failed", description: result.error });
+        } else if (result.data) {
+            const songData = {
+                songTitle: result.data.songTitle,
+                artist: result.data.artist,
+                lyrics: result.data.lyrics,
+            };
+            onSelectSong(songData);
+            toast({ title: "Successfully extracted song!" });
+        }
     });
   };
 
@@ -155,6 +190,8 @@ export function TranslationClient() {
     setTranslation(null);
   }
 
+  const isLoading = isSearching || isExtracting;
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8">
       <div className="grid md:grid-cols-2 gap-8">
@@ -162,28 +199,51 @@ export function TranslationClient() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="font-headline">1. Find a song (Optional)</CardTitle>
-              <CardDescription>Search for a song by title, artist, or lyrics.</CardDescription>
+              <CardTitle className="font-headline">1. Get Lyrics</CardTitle>
+              <CardDescription>Search for a song by title or import it from a URL.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form action={onSearch} className="flex items-center gap-2">
-                <Input
-                  name="query"
-                  placeholder="e.g., Amazing Grace"
-                  className="flex-grow"
-                  disabled={isSearching}
-                />
-                <Button type="submit" disabled={isSearching}>
-                  {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
-                  <span className="ml-2">Search</span>
-                </Button>
-              </form>
+              <Tabs defaultValue="search" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="search" disabled={isLoading}><Search className="mr-2"/>Search</TabsTrigger>
+                  <TabsTrigger value="url" disabled={isLoading}><Link className="mr-2"/>From URL</TabsTrigger>
+                </TabsList>
+                <TabsContent value="search" className="pt-4">
+                  <form action={onSearch} className="flex items-center gap-2">
+                    <Input
+                      name="query"
+                      placeholder="e.g., Amazing Grace"
+                      className="flex-grow"
+                      disabled={isLoading}
+                    />
+                    <Button type="submit" disabled={isLoading}>
+                      {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
+                      <span className="ml-2">Search</span>
+                    </Button>
+                  </form>
+                </TabsContent>
+                <TabsContent value="url" className="pt-4">
+                  <form action={onUrlExtract} className="flex items-center gap-2">
+                      <Input
+                        name="url"
+                        placeholder="https://... paste song page URL"
+                        className="flex-grow"
+                        disabled={isLoading}
+                      />
+                      <Button type="submit" disabled={isLoading}>
+                        {isExtracting ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
+                        <span className="ml-2">Extract</span>
+                      </Button>
+                  </form>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
 
-          {isSearching && (
-            <div className="text-center p-4">
-              <LoaderCircle className="h-6 w-6 animate-spin mx-auto text-primary" />
+          {isLoading && (
+            <div className="text-center p-4 flex items-center justify-center gap-2 text-muted-foreground">
+              <LoaderCircle className="h-5 w-5 animate-spin" />
+              <span>{isExtracting ? 'Extracting from URL...' : 'Searching for songs...'}</span>
             </div>
           )}
 
@@ -209,7 +269,7 @@ export function TranslationClient() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-headline">2. Enter or Edit Lyrics</CardTitle>
+              <CardTitle className="font-headline">2. Edit Lyrics & Translate</CardTitle>
               {selectedSong ? (
                 <div className="flex items-center justify-between pt-2 text-sm">
                     <div>
@@ -222,7 +282,7 @@ export function TranslationClient() {
                     </Button>
                 </div>
               ) : (
-                <CardDescription>Paste lyrics here, or start with a search.</CardDescription>
+                <CardDescription>Paste lyrics here, or get them via search/URL.</CardDescription>
               )}
             </CardHeader>
             <CardContent className="space-y-4">
@@ -272,7 +332,7 @@ Amazing grace, how sweet the sound..."
                     </Button>
                 </div>
                 <div className="flex justify-between items-center pt-1">
-                  <CardDescription>The translation is in blue. Use the refinement box below if needed.</CardDescription>
+                  <CardDescription>The translation is in blue.</CardDescription>
                   <Badge variant="outline">Style: {translation.translationStyle}</Badge>
                 </div>
               </CardHeader>

@@ -1,6 +1,6 @@
 "use server";
 
-import { refineTranslation, searchSongs, translateLyrics } from "@/ai/flows";
+import { refineTranslation, searchSongs, translateLyrics, extractSongFromUrl } from "@/ai/flows";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -74,6 +74,29 @@ export async function handleRefinement(input: {
     console.error(e);
     return {
       error: e.message || "An unexpected error occurred during refinement.",
+    };
+  }
+}
+
+const extractSchema = z.object({
+  url: z.string().url({ message: "Please enter a valid URL." }),
+});
+
+export async function handleUrlExtraction(formData: FormData) {
+  const url = formData.get("url") as string;
+  const parsed = extractSchema.safeParse({ url });
+
+  if (!parsed.success) {
+    return { error: parsed.error.errors.map((e) => e.message).join(", ") };
+  }
+
+  try {
+    const result = await extractSongFromUrl({ url: parsed.data.url });
+    return { data: result };
+  } catch (e: any) {
+    console.error(e);
+    return {
+      error: e.message || "An unexpected error occurred during URL extraction.",
     };
   }
 }

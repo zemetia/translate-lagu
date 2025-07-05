@@ -1,14 +1,18 @@
 'use server';
 /**
- * @fileOverview A flow for searching songs using the AI's knowledge.
+ * @fileOverview A flow for searching songs using the AI's knowledge and extracting from a URL.
  *
  * - searchSongs - A function that handles the song search process.
  * - SearchSongsInput - The input type for the searchSongs function.
  * - SearchSongsOutput - The return type for the searchSongs function.
+ * - extractSongFromUrl - A function that handles the song extraction process from a URL.
+ * - ExtractSongFromUrlInput - The input type for the extractSongFromUrl function.
+ * - ExtractSongFromUrlOutput - The return type for the extractSongFromUrl function.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
+import { fetchUrlContentTool } from '../tools/search-lyrics';
 
 const SearchSongsInputSchema = z.object({
   query: z.string().describe('The song title and/or artist to search for.'),
@@ -29,7 +33,7 @@ export async function searchSongs(input: SearchSongsInput): Promise<SearchSongsO
   return searchSongsFlow(input);
 }
 
-const prompt = ai.definePrompt({
+const searchPrompt = ai.definePrompt({
     name: 'searchSongsPrompt',
     input: { schema: SearchSongsInputSchema },
     output: { schema: SearchSongsOutputSchema },
@@ -56,9 +60,61 @@ const searchSongsFlow = ai.defineFlow(
     outputSchema: SearchSongsOutputSchema,
   },
   async (input) => {
-    const { output } = await prompt(input);
+    const { output } = await searchPrompt(input);
     if (!output || !output.results) {
         return { results: [] };
+    }
+    return output;
+  }
+);
+
+// --- NEW FLOW FOR URL EXTRACTION ---
+
+const ExtractSongFromUrlInputSchema = z.object({
+  url: z.string().url().describe('The URL of the song page to process.'),
+});
+export type ExtractSongFromUrlInput = z.infer<typeof ExtractSongFromUrlInputSchema>;
+
+const ExtractSongFromUrlOutputSchema = z.object({
+  songTitle: z.string().describe("The title of the song. If not found, return an empty string."),
+  artist: z.string().describe("The artist, composer, or writer of the song. If not found, return 'Unknown'."),
+  lyrics: z.string().describe("The full lyrics of the song extracted from the page. Section markers like [Verse 1], [Chorus] should be preserved. If not found, return an empty string."),
+});
+export type ExtractSongFromUrlOutput = z.infer<typeof ExtractSongFromUrlOutputSchema>;
+
+export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promise<ExtractSongFromUrlOutput> {
+  return extractSongFromUrlFlow(input);
+}
+
+const extractPrompt = ai.definePrompt({
+  name: 'extractSongFromUrlPrompt',
+  input: { schema: ExtractSongFromUrlInputSchema },
+  output: { schema: ExtractSongFromUrlOutputSchema },
+  tools: [fetchUrlContentTool],
+  prompt: `You are an AI assistant that extracts song information from webpages.
+A user has provided a URL. Your task is to:
+1.  Use the 'fetchUrlContent' tool to get the text content of the webpage at the given URL.
+2.  From the fetched text, carefully identify and extract the song's title, the artist/composer, and the full lyrics.
+3.  Preserve lyric structure, including section markers like [Verse] or [Chorus].
+4.  Return the extracted information in the specified JSON format. If any piece of information cannot be found, return an empty string for lyrics/title or 'Unknown' for the artist.
+
+URL to process: {{{url}}}
+`,
+});
+
+const extractSongFromUrlFlow = ai.defineFlow(
+  {
+    name: 'extractSongFromUrlFlow',
+    inputSchema: ExtractSongFromUrlInputSchema,
+    outputSchema: ExtractSongFromUrlOutputSchema,
+  },
+  async (input) => {
+    const { output } = await extractPrompt(input);
+    if (!output) {
+      throw new Error('The AI failed to extract song information from the provided URL.');
+    }
+    if (!output.lyrics || !output.songTitle) {
+      throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
     }
     return output;
   }
