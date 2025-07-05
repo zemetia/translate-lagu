@@ -1,6 +1,12 @@
 "use server";
 
-import { refineTranslation, searchSongs, translateLyrics, extractSongFromUrl } from "@/ai/flows";
+import {
+  refineTranslation,
+  searchSongCandidates,
+  getLyricsForSong,
+  translateLyrics,
+  extractSongFromUrl,
+} from "@/ai/flows";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -16,7 +22,7 @@ export async function handleSearch(formData: FormData) {
   }
 
   try {
-    const result = await searchSongs(parsed.data);
+    const result = await searchSongCandidates(parsed.data);
     return { data: result };
   } catch (e: any) {
     console.error(e);
@@ -26,13 +32,38 @@ export async function handleSearch(formData: FormData) {
   }
 }
 
+const getLyricsSchema = z.object({
+  songTitle: z.string(),
+  artist: z.string(),
+});
+
+export async function handleGetLyrics(input: {
+  songTitle: string;
+  artist: string;
+}) {
+  const parsed = getLyricsSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return { error: parsed.error.errors.map((e) => e.message).join(", ") };
+  }
+
+  try {
+    const result = await getLyricsForSong(parsed.data);
+    return { data: result };
+  } catch (e: any) {
+    console.error(e);
+    return {
+      error:
+        e.message || "An unexpected error occurred while fetching lyrics.",
+    };
+  }
+}
+
 const translateSchema = z.object({
   lyrics: z.string().min(10, "Lyrics are too short to translate."),
 });
 
-export async function handleTranslation(input: {
-  lyrics?: string;
-}) {
+export async function handleTranslation(input: { lyrics?: string }) {
   const parsed = translateSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -53,7 +84,8 @@ export async function handleTranslation(input: {
 const refineSchema = z.object({
   originalText: z.string(),
   initialTranslation: z.string(),
-  refinementPrompt: z.string().min(3, "Please provide a more descriptive refinement prompt."),
+  refinementPrompt:
+    z.string().min(3, "Please provide a more descriptive refinement prompt."),
 });
 
 export async function handleRefinement(input: {

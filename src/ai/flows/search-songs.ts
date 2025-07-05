@@ -1,13 +1,10 @@
 'use server';
 /**
- * @fileOverview A flow for searching songs by finding a URL and extracting lyrics.
+ * @fileOverview Flows for searching for songs and extracting lyrics.
  *
- * - searchSongs - A function that handles the song search process.
- * - SearchSongsInput - The input type for the searchSongs function.
- * - SearchSongsOutput - The return type for the searchSongs function.
- * - extractSongFromUrl - A function that handles the song extraction process from a URL.
- * - ExtractSongFromUrlInput - The input type for the extractSongFromUrl function.
- * - ExtractSongFromUrlOutput - The return type for the extractSongFromUrl function.
+ * - searchSongCandidates: Finds a list of potential songs based on a query.
+ * - getLyricsForSong: Finds the lyrics for a specific song title and artist.
+ * - extractSongFromUrl: Extracts song data from a given URL.
  */
 
 import {ai} from '@/ai/genkit';
@@ -16,29 +13,70 @@ import { fetchUrlContent } from '../tools/search-lyrics';
 
 // --- SCHEMAS ---
 
+// Input for the initial search
 const SearchSongsInputSchema = z.object({
-  query: z.string().describe('The song title and/or artist to search for.'),
+  query: z.string().describe('The song title, artist, or lyrics to search for.'),
 });
 export type SearchSongsInput = z.infer<typeof SearchSongsInputSchema>;
 
+// Output for the initial search: a list of candidates
+const SongCandidateSchema = z.object({
+  songTitle: z.string().describe("The title of the song."),
+  artist: z.string().describe("The artist, composer, or writer of the song."),
+});
+const SearchSongCandidatesOutputSchema = z.object({
+    results: z.array(SongCandidateSchema).describe('A list of potential matching songs found.'),
+});
+export type SearchSongCandidatesOutput = z.infer<typeof SearchSongCandidatesOutputSchema>;
+
+// Input for fetching lyrics for a specific song
+const GetLyricsInputSchema = z.object({
+    songTitle: z.string().describe('The title of the song to find lyrics for.'),
+    artist: z.string().describe('The artist of the song.'),
+});
+export type GetLyricsInput = z.infer<typeof GetLyricsInputSchema>;
+
+// A full song object, including lyrics
 const SongDataSchema = z.object({
   songTitle: z.string().describe("The title of the song. If not found, return an empty string."),
   artist: z.string().describe("The artist, composer, or writer of the song. If not found, return 'Unknown'."),
   lyrics: z.string().describe("The full lyrics of the song extracted from the page. Section markers like [Verse 1], [Chorus] should be preserved. If not found, return an empty string."),
 });
+export type SongData = z.infer<typeof SongDataSchema>;
 
-const SearchSongsOutputSchema = z.object({
-    results: z.array(SongDataSchema).describe('A list of matching songs found. Will contain one result if successful.'),
-});
-export type SearchSongsOutput = z.infer<typeof SearchSongsOutputSchema>;
-
+// Input for extracting from a URL
 const ExtractSongFromUrlInputSchema = z.object({
   url: z.string().url().describe('The URL of the song page to process.'),
 });
 export type ExtractSongFromUrlInput = z.infer<typeof ExtractSongFromUrlInputSchema>;
 export type ExtractSongFromUrlOutput = z.infer<typeof SongDataSchema>;
 
+
 // --- PROMPTS ---
+
+const searchCandidatesPrompt = ai.definePrompt({
+    name: 'searchSongCandidatesPrompt',
+    input: { schema: SearchSongsInputSchema },
+    output: { schema: SearchSongCandidatesOutputSchema },
+    prompt: `You are a music search expert. Based on the user's query, find a list of up to 5 potential matching songs from the web. For each song, provide the title and the primary artist, composer, or church associated with it. Do not find lyrics yet.
+
+User Query: {{{query}}}
+
+Return a list of song candidates in the specified JSON format.`,
+});
+
+const findUrlPrompt = ai.definePrompt({
+    name: 'findSongUrlPrompt',
+    input: { schema: GetLyricsInputSchema },
+    output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics.") }) },
+    prompt: `You are a web search expert. Given the song title and artist, find the single best and most reliable public URL that contains the lyrics. Prioritize dedicated lyric websites (like genius.com, azlyrics.com, etc.). Do not return URLs from YouTube, Spotify, or other streaming services.
+
+Song Title: {{{songTitle}}}
+Artist: {{{artist}}}
+
+Return ONLY the URL in the specified JSON format.`,
+});
+
 
 const extractFromContentPrompt = ai.definePrompt({
   name: 'extractFromContentPrompt',
@@ -66,62 +104,65 @@ Raw Text Input:
   },
 });
 
-const findUrlPrompt = ai.definePrompt({
-    name: 'findSongUrlPrompt',
-    input: { schema: SearchSongsInputSchema },
-    output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics.") }) },
-    prompt: `You are a web search expert. Given the user's query for a song, find the single best and most reliable public URL that contains the lyrics. Prioritize dedicated lyric websites (like genius.com, azlyrics.com, etc.). Do not return URLs from YouTube, Spotify, or other streaming services.
 
-User Query: {{{query}}}
+// --- EXPORTED FUNCTIONS & FLOWS ---
 
-Return ONLY the URL in the specified JSON format.`,
-});
-
-
-// --- FLOWS & EXPORTED FUNCTIONS ---
-
-export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promise<ExtractSongFromUrlOutput> {
-  return extractSongFromUrlFlow(input);
+/**
+ * Searches the web for song candidates based on a query. Returns a list of titles and artists.
+ */
+export async function searchSongCandidates(input: SearchSongsInput): Promise<SearchSongCandidatesOutput> {
+  const { output } = await searchCandidatesPrompt(input);
+  return output || { results: [] };
 }
 
-const extractSongFromUrlFlow = ai.defineFlow(
-  {
-    name: 'extractSongFromUrlFlow',
-    inputSchema: ExtractSongFromUrlInputSchema,
-    outputSchema: SongDataSchema,
-  },
-  async ({ url }) => {
-    // Step 1: Fetch content using the regular function
-    const content = await fetchUrlContent(url);
-    if (content.startsWith('Error:')) {
-        throw new Error(content);
-    }
-    
-    // Step 2: Extract data using the AI prompt
-    const { output } = await extractFromContentPrompt({ content });
-    if (!output) {
-      throw new Error('The AI failed to extract song information from the provided URL.');
-    }
-    if (!output.lyrics || !output.songTitle) {
-      throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
-    }
-    return output;
-  }
-);
 
-
-export async function searchSongs(input: SearchSongsInput): Promise<SearchSongsOutput> {
+/**
+ * Fetches the full lyrics for a given song title and artist by finding a URL and extracting its content.
+ */
+export async function getLyricsForSong(input: GetLyricsInput): Promise<SongData> {
   // Step 1: Use AI to find the best URL for the query.
   const { output: urlOutput } = await findUrlPrompt(input);
   if (!urlOutput?.url) {
-      return { results: [] };
+      throw new Error("Could not find a reliable URL for this song.");
   }
   
-  // Step 2: Re-use the extraction flow to fetch and parse the URL.
-  const songData = await extractSongFromUrl({ url: urlOutput.url });
+  // Step 2: Fetch content from the URL.
+  const content = await fetchUrlContent(urlOutput.url);
+  if (content.startsWith('Error:')) {
+      throw new Error(content);
+  }
+
+  // Step 3: Extract song data from the content.
+  const { output: songData } = await extractFromContentPrompt({ content });
+  if (!songData) {
+    throw new Error('The AI failed to extract song information from the provided URL.');
+  }
+  if (!songData.lyrics || !songData.songTitle) {
+    throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
+  }
+
+  // Step 4: Return the data.
+  return songData;
+}
+
+
+/**
+ * Extracts song information from a user-provided URL.
+ */
+export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promise<ExtractSongFromUrlOutput> {
+  // Step 1: Fetch content using the regular function
+  const content = await fetchUrlContent(input.url);
+  if (content.startsWith('Error:')) {
+      throw new Error(content);
+  }
   
-  // Step 3: Return the data in the expected format.
-  return {
-      results: [songData]
-  };
+  // Step 2: Extract data using the AI prompt
+  const { output } = await extractFromContentPrompt({ content });
+  if (!output) {
+    throw new Error('The AI failed to extract song information from the provided URL.');
+  }
+  if (!output.lyrics || !output.songTitle) {
+    throw new Error('Could not find lyrics or title in the provided URL. Please try a different page.');
+  }
+  return output;
 }
