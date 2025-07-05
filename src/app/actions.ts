@@ -1,23 +1,37 @@
 "use server";
 
-import { translateLyrics, refineTranslation } from "@/ai/flows";
+import { refineTranslation, searchSongs, translateLyrics } from "@/ai/flows";
 import { z } from "zod";
 
+const searchSchema = z.object({
+  query: z.string().min(3, "Please enter a longer search query."),
+});
+
+export async function handleSearch(formData: FormData) {
+  const query = formData.get("query") as string;
+  const parsed = searchSchema.safeParse({ query });
+
+  if (!parsed.success) {
+    return { error: parsed.error.errors.map((e) => e.message).join(", ") };
+  }
+
+  try {
+    const result = await searchSongs(parsed.data);
+    return { data: result };
+  } catch (e: any) {
+    console.error(e);
+    return {
+      error: e.message || "An unexpected error occurred during search.",
+    };
+  }
+}
+
 const translateSchema = z.object({
-  lyrics: z.string().optional(),
-  songTitle: z.string().optional(),
-  artist: z.string().optional(),
-  translationMode: z.enum(["poetic", "literal"]),
-}).refine(data => data.lyrics || data.songTitle, {
-    message: "Either lyrics or a song title must be provided.",
-    path: ["lyrics"],
+  lyrics: z.string().min(10, "Lyrics are too short to translate."),
 });
 
 export async function handleTranslation(input: {
   lyrics?: string;
-  songTitle?: string;
-  artist?: string;
-  translationMode: "poetic" | "literal";
 }) {
   const parsed = translateSchema.safeParse(input);
 
@@ -26,27 +40,22 @@ export async function handleTranslation(input: {
   }
 
   try {
-    const { lyrics, songTitle, artist, translationMode } = parsed.data;
+    const { lyrics } = parsed.data;
     
-    // First, call to detect the language (and potentially search for lyrics).
+    // First, call to detect the language.
     // The targetLanguage is a dummy value; it will be corrected in the next step.
     const detectResult = await translateLyrics({
         lyrics,
-        songTitle,
-        artist,
         targetLanguage: 'en', // Dummy target doesn't matter for detection
-        translationMode
     });
     
     const detectedLanguage = detectResult.detectedLanguage;
     const targetLanguage = detectedLanguage === 'en' ? 'id' : 'en';
 
     // Then, translate to the actual target language.
-    // We pass back the originalLyrics from the first call to avoid a second search.
     const finalResult = await translateLyrics({
-        lyrics: detectResult.originalLyrics,
+        lyrics,
         targetLanguage,
-        translationMode
     });
 
     return { data: finalResult };

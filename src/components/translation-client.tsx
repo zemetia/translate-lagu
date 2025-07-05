@@ -1,63 +1,86 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { handleTranslation, handleRefinement } from "@/app/actions";
+import { handleSearch, handleTranslation, handleRefinement } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   LoaderCircle,
   Languages,
-  BookOpen,
-  Feather,
   Sparkles,
   ArrowRight,
-  Search
+  Search,
+  ListMusic,
+  RefreshCcw,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-type TranslationMode = "poetic" | "literal";
+interface SearchResult {
+  songTitle: string;
+  artist: string;
+  lyrics: string;
+}
 
 interface TranslationResult {
-  original: string; // The original lyrics from either input or search
+  original: string;
   artist: string;
+  songTitle: string;
   detectedLanguage: "en" | "id";
   translated: string;
 }
 
 export function TranslationClient() {
   const [lyrics, setLyrics] = useState("");
-  const [artist, setArtist] = useState("");
-  const [songTitle, setSongTitle] = useState("");
-  const [searchArtist, setSearchArtist] = useState("");
-  const [activeTab, setActiveTab] = useState("lyrics");
-
-  const [mode, setMode] = useState<TranslationMode>("poetic");
   const [refinementPrompt, setRefinementPrompt] = useState("");
+  
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [selectedSong, setSelectedSong] = useState<SearchResult | null>(null);
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
   
+  const [isSearching, startSearch] = useTransition();
   const [isTranslating, startTranslation] = useTransition();
   const [isRefining, startRefinement] = useTransition();
   
   const { toast } = useToast();
-  
-  const isSearchMode = activeTab === "search";
 
-  const onTranslate = async () => {
-    if (isSearchMode && songTitle.trim().length < 3) {
+  const onSearch = (formData: FormData) => {
+    const query = formData.get("query") as string;
+    if (query.trim().length < 3) {
       toast({
         variant: "destructive",
-        title: "Input too short",
-        description: "Please enter a song title to search.",
+        title: "Search query too short",
+        description: "Please enter at least 3 characters to search.",
       });
       return;
     }
-    if (!isSearchMode && lyrics.trim().length < 10) {
+
+    startSearch(async () => {
+      const result = await handleSearch(formData);
+      if (result.error) {
+        toast({ variant: "destructive", title: "Search Failed", description: result.error });
+        setSearchResults([]);
+      } else {
+        setSearchResults(result.data?.results || []);
+        if (!result.data?.results || result.data.results.length === 0) {
+            toast({ title: "No results found", description: "Try a different song title or artist." });
+        }
+      }
+    });
+  };
+
+  const onSelectSong = (song: SearchResult) => {
+    setSelectedSong(song);
+    setLyrics(song.lyrics);
+    setSearchResults(null);
+    setTranslation(null);
+  };
+
+  const onTranslate = async () => {
+    if (lyrics.trim().length < 10) {
       toast({
         variant: "destructive",
         title: "Input too short",
@@ -66,30 +89,18 @@ export function TranslationClient() {
       return;
     }
 
-    setTranslation(null); // Clear previous results
+    setTranslation(null);
     startTranslation(async () => {
-      const result = await handleTranslation(
-        isSearchMode
-          ? { songTitle, artist: searchArtist, translationMode: mode }
-          : { lyrics, translationMode: mode }
-      );
+      const result = await handleTranslation({ lyrics });
 
       if (result.error) {
-        toast({
-          variant: "destructive",
-          title: "Translation Failed",
-          description: result.error,
-        });
+        toast({ variant: "destructive", title: "Translation Failed", description: result.error });
         setTranslation(null);
-      } else if (result.data) {
-        // After a successful search, populate the lyrics textarea
-        if (isSearchMode && result.data.originalLyrics) {
-          setLyrics(result.data.originalLyrics);
-        }
-        
+      } else if (result.data && selectedSong) {
         setTranslation({
-          original: result.data.originalLyrics, // Use the definitive original lyrics from the backend
-          artist: isSearchMode ? searchArtist : artist, // Use the relevant artist for display
+          original: result.data.originalLyrics,
+          artist: selectedSong.artist,
+          songTitle: selectedSong.songTitle,
           detectedLanguage: result.data.detectedLanguage,
           translated: result.data.translatedLyrics,
         });
@@ -109,22 +120,19 @@ export function TranslationClient() {
       });
 
       if (result.error) {
-        toast({
-          variant: "destructive",
-          title: "Refinement Failed",
-          description: result.error,
-        });
+        toast({ variant: "destructive", title: "Refinement Failed", description: result.error });
       } else if (result.data) {
-        setTranslation({
-          ...translation,
-          translated: result.data.refinedTranslation,
-        });
-        toast({
-            title: "Translation Refined",
-            description: "The translation has been updated based on your prompt.",
-        });
+        setTranslation({ ...translation, translated: result.data.refinedTranslation });
+        toast({ title: "Translation Refined" });
       }
     });
+  };
+  
+  const handleReset = () => {
+    setSearchResults(null);
+    setSelectedSong(null);
+    setLyrics("");
+    setTranslation(null);
   };
 
   const languageName = (code: 'en' | 'id' | undefined) => {
@@ -134,108 +142,89 @@ export function TranslationClient() {
   };
   
   return (
-    <div className="w-full max-w-6xl mx-auto">
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="font-headline text-2xl">Enter or Search Lyrics</CardTitle>
-          <CardDescription>
-            You can either paste lyrics directly or search for a song by its title.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-           <Tabs defaultValue="lyrics" className="w-full" onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="lyrics">Enter Lyrics</TabsTrigger>
-              <TabsTrigger value="search">Search Song</TabsTrigger>
-            </TabsList>
-            <TabsContent value="lyrics" className="pt-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="lyrics">Lyrics</Label>
-                  <Textarea
+    <div className="w-full max-w-6xl mx-auto space-y-8">
+      {!selectedSong ? (
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Search for a Song</CardTitle>
+            <CardDescription>Enter a song title or artist to find lyrics.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={onSearch} className="flex items-center gap-2">
+              <Input
+                name="query"
+                placeholder="e.g., Amazing Grace, Hillsong, etc."
+                className="flex-grow"
+                disabled={isSearching}
+                aria-label="Song search query"
+              />
+              <Button type="submit" disabled={isSearching} size="lg">
+                {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
+                <span className="ml-2">Search</span>
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="shadow-lg">
+             <CardHeader>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle className="font-headline text-2xl">Edit Lyrics & Translate</CardTitle>
+                        <CardDescription>Review the lyrics for &quot;{selectedSong.songTitle}&quot; and translate when ready.</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={handleReset}>
+                        <RefreshCcw />
+                        <span className="ml-2">Start Over</span>
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                 <Textarea
                     id="lyrics"
                     placeholder="Paste song lyrics here..."
                     value={lyrics}
                     onChange={(e) => setLyrics(e.target.value)}
-                    className="h-48 resize-none"
+                    className="h-64 resize-y font-mono"
                     aria-label="Song lyrics input"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="artist">Artist / Composer (Optional)</Label>
-                  <Input
-                    id="artist"
-                    placeholder="e.g., Hillsong, JPCC Worship, etc."
-                    value={artist}
-                    onChange={(e) => setArtist(e.target.value)}
-                    aria-label="Artist or composer input"
-                  />
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent value="search" className="pt-4">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                    <Label htmlFor="song-title">Song Title</Label>
-                    <Input
-                      id="song-title"
-                      placeholder="e.g., Amazing Grace"
-                      value={songTitle}
-                      onChange={(e) => setSongTitle(e.target.value)}
-                      aria-label="Song title input for search"
-                    />
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={onTranslate} disabled={isTranslating} size="lg">
+                      {isTranslating ? <LoaderCircle className="animate-spin" /> : <Languages />}
+                      <span className="ml-2">Translate Lyrics</span>
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="search-artist">Artist (Optional)</Label>
-                    <Input
-                      id="search-artist"
-                      placeholder="e.g., John Newton"
-                      value={searchArtist}
-                      onChange={(e) => setSearchArtist(e.target.value)}
-                      aria-label="Artist input for search"
-                    />
-                  </div>
-               </div>
-            </TabsContent>
-          </Tabs>
-          
-          <div className="space-y-3 pt-3">
-            <Label>Translation Mode</Label>
-            <RadioGroup
-              value={mode}
-              onValueChange={(value: string) => setMode(value as TranslationMode)}
-              className="flex gap-4"
-            >
-              <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
-                <RadioGroupItem value="poetic" id="poetic" />
-                <Feather className="h-5 w-5 text-primary" />
-                <span>Poetic</span>
-              </Label>
-              <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
-                <RadioGroupItem value="literal" id="literal" />
-                <BookOpen className="h-5 w-5 text-primary" />
-                <span>Literal</span>
-              </Label>
-            </RadioGroup>
-          </div>
+            </CardContent>
+        </Card>
+      )}
 
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={onTranslate}
-              disabled={isTranslating}
-              size="lg"
-            >
-              {isTranslating ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                isSearchMode ? <Search /> : <Languages />
-              )}
-              <span className="ml-2">{isSearchMode ? 'Search & Translate' : 'Translate Lyrics'}</span>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-      
+      {isSearching && (
+         <div className="text-center p-8 space-y-4">
+            <LoaderCircle className="h-8 w-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground">Searching for songs...</p>
+        </div>
+      )}
+
+      {searchResults && searchResults.length > 0 && (
+         <Card>
+            <CardHeader>
+                <CardTitle className="font-headline">Search Results</CardTitle>
+                <CardDescription>Select a song to continue</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+                {searchResults.map((song, index) => (
+                    <Button key={index} variant="outline" className="w-full justify-start h-auto p-4" onClick={() => onSelectSong(song)}>
+                        <ListMusic className="text-primary mr-4"/>
+                        <div className="text-left">
+                            <p className="font-bold">{song.songTitle}</p>
+                            <p className="text-sm text-muted-foreground">{song.artist}</p>
+                        </div>
+                    </Button>
+                ))}
+            </CardContent>
+         </Card>
+      )}
+
       {(isTranslating || translation) && <Separator className="my-8" />}
 
       {isTranslating && (
@@ -250,12 +239,10 @@ export function TranslationClient() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-headline">
-                Original Lyrics 
+                Original: {translation.songTitle}
                 <span className="text-sm font-normal text-muted-foreground font-body">({languageName(translation.detectedLanguage)})</span>
               </CardTitle>
-              {translation.artist && (
-                 <CardDescription>By {translation.artist}</CardDescription>
-              )}
+              <CardDescription>By {translation.artist}</CardDescription>
             </CardHeader>
             <CardContent>
               <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed">{translation.original}</pre>
@@ -267,7 +254,6 @@ export function TranslationClient() {
                 Translated Lyrics
                 <span className="text-sm font-normal text-muted-foreground font-body">({languageName(translation.detectedLanguage === 'en' ? 'id' : 'en')})</span>
               </CardTitle>
-                <CardDescription>Mode: {mode.charAt(0).toUpperCase() + mode.slice(1)}</CardDescription>
             </CardHeader>
             <CardContent className="flex-grow">
               <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed">{translation.translated}</pre>
