@@ -40,25 +40,8 @@ export async function handleTranslation(input: {
   }
 
   try {
-    const { lyrics } = parsed.data;
-    
-    // First, call to detect the language.
-    // The targetLanguage is a dummy value; it will be corrected in the next step.
-    const detectResult = await translateLyrics({
-        lyrics,
-        targetLanguage: 'en', // Dummy target doesn't matter for detection
-    });
-    
-    const detectedLanguage = detectResult.detectedLanguage;
-    const targetLanguage = detectedLanguage === 'en' ? 'id' : 'en';
-
-    // Then, translate to the actual target language.
-    const finalResult = await translateLyrics({
-        lyrics,
-        targetLanguage,
-    });
-
-    return { data: finalResult };
+    const result = await translateLyrics(parsed.data);
+    return { data: result };
   } catch (e: any) {
     console.error(e);
     return {

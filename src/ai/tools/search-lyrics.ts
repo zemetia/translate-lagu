@@ -59,6 +59,36 @@ Great is Thy faithfulness!
 Morning by morning new mercies I see;
 All I have needed Thy hand hath provided—
 Great is Thy faithfulness, Lord, unto me!`
+      },
+      {
+        songTitle: 'Bapa Engkau Sungguh Baik',
+        artist: 'Nikita',
+        lyrics: `[Verse]
+Bapa, Engkau sungguh baik
+Kasih-Mu melimpah di hidupku
+Bapa, ku berterima kasih
+Berkat-Mu hari ini yang Kau sediakan bagiku
+
+[Chorus]
+Kunaikkan syukurku buat hari yang Kau b'ri
+Tak habis-habisnya kasih dan rahmat-Mu
+S'lalu baru dan tak pernah terlambat pertolongan-Mu
+Besar setia-Mu di s'panjang hidupku`
+      },
+      {
+        songTitle: 'Pelangi Kasih',
+        artist: 'GMS Live',
+        lyrics: `[Verse]
+Apa yang kau alami kini
+Mungkin tak dapat engkau mengerti
+Satu hal tanamkan di hati
+Indah semua yang Tuhan b'ri
+
+[Chorus]
+Tuhanmu tak akan memberi
+Ular beracun pada yang minta roti
+S'bab Dia Bapa yang mengerti
+Waktu yang tepat 'tuk memberi pelangi`
       }
     ];
     

@@ -13,7 +13,6 @@ import {z} from 'zod';
 
 const TranslateLyricsInputSchema = z.object({
   lyrics: z.string().describe('The lyrics to translate.'),
-  targetLanguage: z.enum(['en', 'id']).describe('The target language code (en for English, id for Indonesian).'),
 });
 export type TranslateLyricsInput = z.infer<typeof TranslateLyricsInputSchema>;
 
@@ -40,11 +39,16 @@ const prompt = ai.definePrompt({
     schema: TranslateLyricsOutputSchema,
   },
   prompt: `You are a professional songwriter and translator specializing in translating song lyrics between English and Indonesian.
-Your knowledge allows you to translate the song given while maintaining the beauty and art of each word, but keeping it as simple as possible. The result should not be "lebay" (over-the-top). You must determine the most appropriate translation style (e.g., poetic, literal) based on the lyrics.
+Your knowledge allows you to translate the song given while maintaining the beauty and art of each word, but keeping it as simple as possible. The result should not be "lebay" (over-the-top).
 
-Once you have the lyrics, first, detect their language.
+First, you MUST detect whether the input lyrics are primarily in English ('en') or Indonesian ('id').
 
-Then, translate the lyrics to the target language. The translated text for each line should be placed directly underneath the original line, enclosed in "{tl}" and "{/tl}" tags.
+Then, you MUST translate the lyrics to the OTHER language.
+- If the input is English, translate to Indonesian.
+- If the input is Indonesian, translate to English.
+
+The translated text for each line must be placed directly underneath the original line, enclosed in "{tl}" and "{/tl}" tags.
+It is crucial that you DO NOT alter the original text lines. The original lines must be preserved exactly as they are in the input.
 
 Example of the desired output format for a single line:
 Original Text
@@ -55,11 +59,9 @@ You must maintain each section and line break from the original lyrics.
 Input Lyrics:
 {{{lyrics}}}
 
-Target Language: {{targetLanguage}}
-
 Your final output must be a valid JSON object with three keys:
 1. "detectedLanguage": The detected language code of the input lyrics ('en' for English, 'id' for Indonesian).
-2. "translatedLyrics": The complete lyrics with the interleaved translation in the format described above.
+2. "translatedLyrics": The complete lyrics with the interleaved translation in the format described above (Original line, then translated line in tags).
 3. "originalLyrics": The original lyrics from the input.
 `,
 });
