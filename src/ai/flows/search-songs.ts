@@ -40,12 +40,19 @@ const findUrlPrompt = ai.definePrompt({
     name: 'findSongUrlPrompt',
     input: { schema: GetLyricsInputSchema },
     output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics.") }) },
-    prompt: `You are a web search expert. Given the song title and artist, find the single best and most reliable public URL that contains the lyrics. Prioritize dedicated lyric websites (like genius.com, azlyrics.com, etc.). Do not return URLs from YouTube, Spotify, or other streaming services.
+    prompt: `You are a web search expert with access to real-time search engine results. Your task is to find a valid, working URL for the lyrics of a given song.
+
+**CRITICAL INSTRUCTIONS:**
+1.  Perform a search for the lyrics of the song title and artist provided.
+2.  From the search results, identify the single most reliable and trustworthy public URL.
+3.  Prioritize dedicated lyric websites (e.g., genius.com, azlyrics.com, songlyrics.com, etc.).
+4.  You MUST NOT return URLs from YouTube, Spotify, Apple Music, or other music streaming services.
+5.  You MUST verify that the URL is likely to be correct and not a 404 page. Do not invent or construct a URL based on a pattern.
+6.  Return ONLY the verified, working URL in the specified JSON format.
 
 Song Title: {{{songTitle}}}
 Artist: {{{artist}}}
-
-Return ONLY the URL in the specified JSON format.`,
+`,
 });
 
 
