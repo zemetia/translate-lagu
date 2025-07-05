@@ -40,7 +40,7 @@ const findBestUrlFromSearchPrompt = ai.definePrompt({
     name: 'findBestUrlFromSearchPrompt',
     input: { schema: z.object({ searchResultsText: z.string() }) },
     output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics found in the search results.") }) },
-    prompt: `You are an AI assistant skilled at parsing web search results. Below is the raw text content from a Google search results page for song lyrics. Your task is to identify the single most reliable and trustworthy URL for the lyrics.
+    prompt: `You are an AI assistant skilled at parsing web search results. Below is the raw text content from a search results page for song lyrics. Your task is to identify the single most reliable and trustworthy URL for the lyrics.
 
 **CRITICAL INSTRUCTIONS:**
 1.  Scan the provided text for URLs.
@@ -94,25 +94,30 @@ export async function searchSongCandidates(input: SearchSongsInput): Promise<Sea
 
 
 /**
- * Fetches the full lyrics for a given song title and artist by scraping Google search,
+ * Fetches the full lyrics for a given song title and artist by searching with DuckDuckGo,
  * finding a reliable URL, and then extracting the content.
  */
 export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
-  // Step 1: Construct a Google search query.
+  // Step 1: Construct a search query.
   const searchQuery = `lyrics for ${input.songTitle} by ${input.artist}`;
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+  const searchUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
 
-  // Step 2: Scrape the Google search results page.
+  // Step 2: Fetch search results from DuckDuckGo.
   const searchResultsText = await fetchUrlContent(searchUrl);
   if (searchResultsText.startsWith('Error:')) {
-    throw new Error(`Failed to scrape Google search results: ${searchResultsText}`);
+    throw new Error(`Failed to perform web search. ${searchResultsText}`);
+  }
+  if (!searchResultsText) {
+    throw new Error(`No web search results found for "${searchQuery}".`);
   }
 
   // Step 3: Use AI to find the best URL from the search results.
-  const { output: urlOutput } = await findBestUrlFromSearchPrompt({ searchResultsText });
+  const { output: urlOutput } = await findBestUrlFromSearchPrompt({
+    searchResultsText,
+  });
   const lyricsUrl = urlOutput?.url;
   if (!lyricsUrl) {
-    throw new Error("AI could not find a reliable URL from the search results.");
+    throw new Error('AI could not find a reliable URL from the search results.');
   }
   
   try {
