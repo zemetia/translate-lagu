@@ -91,12 +91,16 @@ const extractPrompt = ai.definePrompt({
   input: { schema: ExtractSongFromUrlInputSchema },
   output: { schema: ExtractSongFromUrlOutputSchema },
   tools: [fetchUrlContentTool],
-  prompt: `You are an AI assistant that extracts song information from webpages.
-A user has provided a URL. Your task is to:
-1.  Use the 'fetchUrlContent' tool to get the text content of the webpage at the given URL.
-2.  From the fetched text, carefully identify and extract the song's title, the artist/composer, and the full lyrics.
-3.  Preserve lyric structure, including section markers like [Verse] or [Chorus].
-4.  Return the extracted information in the specified JSON format. If any piece of information cannot be found, return an empty string for lyrics/title or 'Unknown' for the artist.
+  prompt: `You are an expert AI system designed to extract song information from the text content of a webpage.
+
+Your process is as follows:
+1.  You will use the 'fetchUrlContent' tool to get the raw text content of the webpage at the given URL.
+2.  **IMPORTANT**: This raw text will include noise like navigation menus, ads, footers, and other boilerplate text. Your primary task is to intelligently identify and isolate the main content of the page, which contains the song information. Discard all irrelevant text.
+3.  From the isolated main content, extract the following three pieces of information:
+    a.  **songTitle**: The title of the song.
+    b.  **artist**: The name of the artist, composer, or writer.
+    c.  **lyrics**: The full lyrics of the song. Preserve section markers like [Verse 1] and [Chorus].
+4.  Return the extracted information in the specified JSON format. If a piece of information cannot be reliably found, return an empty string for the title/lyrics or 'Unknown' for the artist.
 
 URL to process: {{{url}}}
 `,
