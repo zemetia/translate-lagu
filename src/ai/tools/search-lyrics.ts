@@ -13,7 +13,7 @@ export const searchSongsTool = ai.defineTool(
     name: 'searchSongsTool',
     description: 'Searches for songs based on a query and returns a list of matching songs with their lyrics.',
     inputSchema: z.object({
-      query: z.string().describe('The song title and/or artist to search for.'),
+      query: z.string().describe('The song title, artist, or a line from the lyrics to search for.'),
     }),
     outputSchema: z.object({
       results: z.array(z.object({
@@ -28,7 +28,7 @@ export const searchSongsTool = ai.defineTool(
     
     // In a real application, you would implement a web search or API call here.
     // For this example, we'll return a hardcoded result list.
-    const results = [
+    const allSongs = [
       {
         songTitle: 'Amazing Grace',
         artist: 'John Newton',
@@ -92,6 +92,13 @@ Waktu yang tepat 'tuk memberi pelangi`
       }
     ];
     
-    return { results: results.filter(r => r.songTitle.toLowerCase().includes(query.toLowerCase()) || r.artist.toLowerCase().includes(query.toLowerCase())) };
+    const lowerCaseQuery = query.toLowerCase();
+    const results = allSongs.filter(song => 
+        song.songTitle.toLowerCase().includes(lowerCaseQuery) || 
+        song.artist.toLowerCase().includes(lowerCaseQuery) ||
+        song.lyrics.toLowerCase().includes(lowerCaseQuery)
+    );
+
+    return { results };
   }
 );
