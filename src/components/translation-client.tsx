@@ -17,8 +17,8 @@ import {
   Search,
   ListMusic,
   Copy,
+  X,
 } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 
 interface SearchResult {
   songTitle: string;
@@ -37,6 +37,7 @@ export function TranslationClient() {
   const [refinementPrompt, setRefinementPrompt] = useState("");
   
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [selectedSong, setSelectedSong] = useState<SearchResult | null>(null);
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
   
   const [isSearching, startSearch] = useTransition();
@@ -72,6 +73,7 @@ export function TranslationClient() {
 
   const onSelectSong = (song: SearchResult) => {
     setLyrics(song.lyrics);
+    setSelectedSong(song);
     setSearchResults(null);
     setTranslation(null);
   };
@@ -146,6 +148,12 @@ export function TranslationClient() {
     });
   };
 
+  const clearSelectedSong = () => {
+    setLyrics("");
+    setSelectedSong(null);
+    setTranslation(null);
+  }
+
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8">
       <div className="grid md:grid-cols-2 gap-8">
@@ -154,7 +162,7 @@ export function TranslationClient() {
           <Card>
             <CardHeader>
               <CardTitle className="font-headline">1. Find a song (Optional)</CardTitle>
-              <CardDescription>Search for a song by title or artist.</CardDescription>
+              <CardDescription>Search for a song by title, artist, or lyrics.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={onSearch} className="flex items-center gap-2">
@@ -201,14 +209,30 @@ export function TranslationClient() {
           <Card>
             <CardHeader>
               <CardTitle className="font-headline">2. Enter or Edit Lyrics</CardTitle>
-              <CardDescription>Paste lyrics here, or edit the results from a search.</CardDescription>
+              {selectedSong ? (
+                <div className="flex items-center justify-between pt-2 text-sm">
+                    <div>
+                        <p className="font-bold">{selectedSong.songTitle}</p>
+                        <p className="text-muted-foreground">{selectedSong.artist}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={clearSelectedSong} className="h-8 w-8">
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Clear song and lyrics</span>
+                    </Button>
+                </div>
+              ) : (
+                <CardDescription>Paste lyrics here, or start with a search.</CardDescription>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               <Textarea
                   placeholder="[Verse 1]
 Amazing grace, how sweet the sound..."
                   value={lyrics}
-                  onChange={(e) => setLyrics(e.target.value)}
+                  onChange={(e) => {
+                    setLyrics(e.target.value);
+                    if(selectedSong) setSelectedSong(null);
+                  }}
                   className="h-64 resize-y font-mono"
                   aria-label="Song lyrics input"
                 />
@@ -227,11 +251,11 @@ Amazing grace, how sweet the sound..."
           {isTranslating && (
              <Card>
                 <CardHeader>
-                  <Skeleton className="h-6 w-1/2" />
-                  <Skeleton className="h-4 w-1/4" />
+                  <CardTitle className="font-headline">3. Review and Refine</CardTitle>
+                  <CardDescription>Translating...</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-56 w-full" />
+                <CardContent className="flex items-center justify-center p-16">
+                  <LoaderCircle className="h-12 w-12 animate-spin text-primary" />
                 </CardContent>
             </Card>
           )}
@@ -278,8 +302,4 @@ Amazing grace, how sweet the sound..."
       </div>
     </div>
   );
-}
-
-function Skeleton({ className }: { className: string }) {
-    return <div className={`animate-pulse bg-muted rounded-md ${className}`} />;
 }
