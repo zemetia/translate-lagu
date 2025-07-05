@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useState, useTransition } from "react";
 import { handleSearch, handleTranslation, handleRefinement } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
@@ -15,7 +16,7 @@ import {
   ArrowRight,
   Search,
   ListMusic,
-  RefreshCcw,
+  Copy,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
@@ -27,8 +28,6 @@ interface SearchResult {
 
 interface TranslationResult {
   original: string;
-  artist: string;
-  songTitle: string;
   detectedLanguage: "en" | "id";
   translated: string;
 }
@@ -38,7 +37,6 @@ export function TranslationClient() {
   const [refinementPrompt, setRefinementPrompt] = useState("");
   
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
-  const [selectedSong, setSelectedSong] = useState<SearchResult | null>(null);
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
   
   const [isSearching, startSearch] = useTransition();
@@ -73,7 +71,6 @@ export function TranslationClient() {
   };
 
   const onSelectSong = (song: SearchResult) => {
-    setSelectedSong(song);
     setLyrics(song.lyrics);
     setSearchResults(null);
     setTranslation(null);
@@ -96,11 +93,9 @@ export function TranslationClient() {
       if (result.error) {
         toast({ variant: "destructive", title: "Translation Failed", description: result.error });
         setTranslation(null);
-      } else if (result.data && selectedSong) {
+      } else if (result.data) {
         setTranslation({
           original: result.data.originalLyrics,
-          artist: selectedSong.artist,
-          songTitle: selectedSong.songTitle,
           detectedLanguage: result.data.detectedLanguage,
           translated: result.data.translatedLyrics,
         });
@@ -128,159 +123,159 @@ export function TranslationClient() {
     });
   };
   
-  const handleReset = () => {
-    setSearchResults(null);
-    setSelectedSong(null);
-    setLyrics("");
-    setTranslation(null);
+  const handleCopy = () => {
+    if (!translation) return;
+    navigator.clipboard.writeText(translation.translated).then(() => {
+        toast({ title: "Formatted lyrics copied to clipboard!" });
+    });
   };
 
-  const languageName = (code: 'en' | 'id' | undefined) => {
-    if (code === 'en') return 'English';
-    if (code === 'id') return 'Indonesian';
-    return 'Unknown';
+  const renderTranslation = (text: string) => {
+    const parts = text.split(/(\{tl\}[\s\S]*?\{\/tl\})/g);
+
+    return parts.map((part, index) => {
+      const match = part.match(/\{tl\}([\s\S]*?)\{\/tl\}/);
+      if (match) {
+        return (
+          <span key={index} className="text-primary">
+            {match[1]}
+          </span>
+        );
+      }
+      return <React.Fragment key={index}>{part}</React.Fragment>;
+    });
   };
-  
+
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-8">
-      {!selectedSong ? (
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="font-headline text-2xl">Search for a Song</CardTitle>
-            <CardDescription>Enter a song title or artist to find lyrics.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={onSearch} className="flex items-center gap-2">
-              <Input
-                name="query"
-                placeholder="e.g., Amazing Grace, Hillsong, etc."
-                className="flex-grow"
-                disabled={isSearching}
-                aria-label="Song search query"
-              />
-              <Button type="submit" disabled={isSearching} size="lg">
-                {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
-                <span className="ml-2">Search</span>
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="shadow-lg">
-             <CardHeader>
-                <div className="flex justify-between items-start">
-                    <div>
-                        <CardTitle className="font-headline text-2xl">Edit Lyrics & Translate</CardTitle>
-                        <CardDescription>Review the lyrics for &quot;{selectedSong.songTitle}&quot; and translate when ready.</CardDescription>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleReset}>
-                        <RefreshCcw />
-                        <span className="ml-2">Start Over</span>
-                    </Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                 <Textarea
-                    id="lyrics"
-                    placeholder="Paste song lyrics here..."
-                    value={lyrics}
-                    onChange={(e) => setLyrics(e.target.value)}
-                    className="h-64 resize-y font-mono"
-                    aria-label="Song lyrics input"
-                  />
-                  <div className="flex justify-end pt-2">
-                    <Button onClick={onTranslate} disabled={isTranslating} size="lg">
-                      {isTranslating ? <LoaderCircle className="animate-spin" /> : <Languages />}
-                      <span className="ml-2">Translate Lyrics</span>
-                    </Button>
-                  </div>
-            </CardContent>
-        </Card>
-      )}
-
-      {isSearching && (
-         <div className="text-center p-8 space-y-4">
-            <LoaderCircle className="h-8 w-8 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Searching for songs...</p>
-        </div>
-      )}
-
-      {searchResults && searchResults.length > 0 && (
-         <Card>
-            <CardHeader>
-                <CardTitle className="font-headline">Search Results</CardTitle>
-                <CardDescription>Select a song to continue</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-                {searchResults.map((song, index) => (
-                    <Button key={index} variant="outline" className="w-full justify-start h-auto p-4" onClick={() => onSelectSong(song)}>
-                        <ListMusic className="text-primary mr-4"/>
-                        <div className="text-left">
-                            <p className="font-bold">{song.songTitle}</p>
-                            <p className="text-sm text-muted-foreground">{song.artist}</p>
-                        </div>
-                    </Button>
-                ))}
-            </CardContent>
-         </Card>
-      )}
-
-      {(isTranslating || translation) && <Separator className="my-8" />}
-
-      {isTranslating && (
-        <div className="grid md:grid-cols-2 gap-8">
-            <Card><CardHeader><Skeleton className="h-6 w-1/2" /></CardHeader><CardContent><Skeleton className="h-40 w-full" /></CardContent></Card>
-            <Card><CardHeader><Skeleton className="h-6 w-1/2" /></CardHeader><CardContent><Skeleton className="h-40 w-full" /></CardContent></Card>
-        </div>
-      )}
-
-      {translation && !isTranslating && (
-        <div className="grid md:grid-cols-2 gap-8 animate-in fade-in duration-500">
+    <div className="w-full max-w-4xl mx-auto space-y-8">
+      <div className="grid md:grid-cols-2 gap-8">
+        {/* INPUT COLUMN */}
+        <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 font-headline">
-                Original: {translation.songTitle}
-                <span className="text-sm font-normal text-muted-foreground font-body">({languageName(translation.detectedLanguage)})</span>
-              </CardTitle>
-              <CardDescription>By {translation.artist}</CardDescription>
+              <CardTitle className="font-headline">1. Find a song (Optional)</CardTitle>
+              <CardDescription>Search for a song by title or artist.</CardDescription>
             </CardHeader>
             <CardContent>
-              <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed">{translation.original}</pre>
+              <form action={onSearch} className="flex items-center gap-2">
+                <Input
+                  name="query"
+                  placeholder="e.g., Amazing Grace"
+                  className="flex-grow"
+                  disabled={isSearching}
+                />
+                <Button type="submit" disabled={isSearching}>
+                  {isSearching ? <LoaderCircle className="animate-spin" /> : <Search />}
+                  <span className="ml-2">Search</span>
+                </Button>
+              </form>
             </CardContent>
           </Card>
-          <Card className="flex flex-col">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 font-headline">
-                Translated Lyrics
-                <span className="text-sm font-normal text-muted-foreground font-body">({languageName(translation.detectedLanguage === 'en' ? 'id' : 'en')})</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-grow">
-              <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed">{translation.translated}</pre>
-            </CardContent>
-             <div className="p-4 border-t bg-secondary/50 m-2 rounded-lg">
-                <Label htmlFor="refine" className="font-bold flex items-center gap-2 mb-2">
-                    <Sparkles className="h-5 w-5 text-accent-foreground" style={{color: 'hsl(var(--accent))'}}/> 
-                    Refine with AI
-                </Label>
-                 <div className="flex gap-2">
-                    <Input
-                        id="refine"
-                        placeholder="e.g., Make it more formal, use simpler words..."
-                        value={refinementPrompt}
-                        onChange={(e) => setRefinementPrompt(e.target.value)}
-                        disabled={isRefining}
-                        aria-label="Refinement prompt"
-                    />
-                    <Button onClick={onRefine} disabled={isRefining || !refinementPrompt} variant="default" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>
-                        {isRefining ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
-                        <span className="sr-only">Refine</span>
-                    </Button>
-                 </div>
+
+          {isSearching && (
+            <div className="text-center p-4">
+              <LoaderCircle className="h-6 w-6 animate-spin mx-auto text-primary" />
             </div>
+          )}
+
+          {searchResults && searchResults.length > 0 && (
+            <Card>
+              <CardHeader>
+                  <CardTitle className="font-headline">Search Results</CardTitle>
+                  <CardDescription>Select a song to continue</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                  {searchResults.map((song, index) => (
+                      <Button key={index} variant="outline" className="w-full justify-start h-auto p-4" onClick={() => onSelectSong(song)}>
+                          <ListMusic className="text-primary mr-4"/>
+                          <div className="text-left">
+                              <p className="font-bold">{song.songTitle}</p>
+                              <p className="text-sm text-muted-foreground">{song.artist}</p>
+                          </div>
+                      </Button>
+                  ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-headline">2. Enter or Edit Lyrics</CardTitle>
+              <CardDescription>Paste lyrics here, or edit the results from a search.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                  placeholder="[Verse 1]
+Amazing grace, how sweet the sound..."
+                  value={lyrics}
+                  onChange={(e) => setLyrics(e.target.value)}
+                  className="h-64 resize-y font-mono"
+                  aria-label="Song lyrics input"
+                />
+                <div className="flex justify-end pt-2">
+                  <Button onClick={onTranslate} disabled={isTranslating || !lyrics} size="lg">
+                    {isTranslating ? <LoaderCircle className="animate-spin" /> : <Languages />}
+                    <span className="ml-2">Translate Lyrics</span>
+                  </Button>
+                </div>
+            </CardContent>
           </Card>
         </div>
-      )}
+
+        {/* OUTPUT COLUMN */}
+        <div className="space-y-6">
+          {isTranslating && (
+             <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-1/2" />
+                  <Skeleton className="h-4 w-1/4" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-56 w-full" />
+                </CardContent>
+            </Card>
+          )}
+
+          {translation && !isTranslating && (
+            <Card className="sticky top-8">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                    <CardTitle className="font-headline">3. Review and Refine</CardTitle>
+                    <Button variant="outline" size="sm" onClick={handleCopy}>
+                        <Copy />
+                        <span className="ml-2">Copy Formatted</span>
+                    </Button>
+                </div>
+                <CardDescription>The translation is in blue. Use the refinement box below if needed.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed bg-muted p-4 rounded-md h-96 overflow-y-auto">
+                    {renderTranslation(translation.translated)}
+                </pre>
+              </CardContent>
+              <div className="p-4 border-t bg-secondary/50 m-2 rounded-lg">
+                  <Label htmlFor="refine" className="font-bold flex items-center gap-2 mb-2">
+                      <Sparkles className="h-5 w-5 text-accent-foreground" style={{color: 'hsl(var(--accent))'}}/> 
+                      Refine with AI
+                  </Label>
+                  <div className="flex gap-2">
+                      <Input
+                          id="refine"
+                          placeholder="e.g., Make it more formal..."
+                          value={refinementPrompt}
+                          onChange={(e) => setRefinementPrompt(e.target.value)}
+                          disabled={isRefining}
+                      />
+                      <Button onClick={onRefine} disabled={isRefining || !refinementPrompt} variant="default" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>
+                          {isRefining ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}
+                          <span className="sr-only">Refine</span>
+                      </Button>
+                  </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
