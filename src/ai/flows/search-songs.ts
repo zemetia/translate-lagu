@@ -36,18 +36,18 @@ User Query: {{{query}}}
 Return a list of song candidates in the specified JSON format.`,
 });
 
-const findBestUrlFromHtmlPrompt = ai.definePrompt({
-    name: 'findBestUrlFromHtmlPrompt',
+const findBestUrlsFromHtmlPrompt = ai.definePrompt({
+    name: 'findBestUrlsFromHtmlPrompt',
     input: { schema: z.object({ searchResultsHtml: z.string().describe("The raw HTML content from a DuckDuckGo search results page.") }) },
-    output: { schema: z.object({ url: z.string().describe("The single most reliable public URL for the song lyrics found in the search results.") }) },
-    prompt: `You are an AI assistant skilled at parsing raw HTML from a search results page. Your task is to analyze the provided HTML and identify the single most reliable and trustworthy URL for song lyrics.
+    output: { schema: z.object({ urls: z.array(z.string()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
+    prompt: `You are an AI assistant skilled at parsing raw HTML from a search results page. Your task is to analyze the provided HTML and identify up to 3 of the most reliable and trustworthy URLs for song lyrics.
 
 **CRITICAL INSTRUCTIONS:**
 1.  Examine the HTML for search result links, which are typically within \`<a>\` tags with a class like "result__a".
-2.  From these links, identify the one that points to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
+2.  From these links, identify the ones that point to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
 3.  You MUST IGNORE links to YouTube, Spotify, Apple Music, or other music streaming services. Also ignore ads or shopping results.
-4.  Choose the link that appears to be the most relevant and official result based on its title and snippet text in the HTML.
-5.  Return ONLY the single best URL you have found in the specified JSON format. Do not return any other text or explanation.
+4.  Choose the links that appear to be the most relevant and official results based on their title and snippet text in the HTML.
+5.  Return ONLY a list of the best URLs (maximum of 3) you have found in the specified JSON format. Do not return any other text or explanation.
 
 Search Results HTML:
 {{{searchResultsHtml}}}
@@ -95,7 +95,7 @@ export async function searchSongCandidates(input: SearchSongsInput): Promise<Sea
 
 /**
  * Fetches the full lyrics for a given song title and artist by searching with DuckDuckGo,
- * finding a reliable URL from the HTML, and then extracting the content.
+ * finding reliable URLs from the HTML, trying each one, and then extracting the content.
  */
 export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
   // Step 1: Construct a search query.
@@ -111,37 +111,49 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataW
     throw new Error(`No web search results found for "${searchQuery}".`);
   }
 
-  // Step 3: Use AI to find the best URL from the search results HTML.
-  const { output: urlOutput } = await findBestUrlFromHtmlPrompt({
+  // Step 3: Use AI to find the best URLs from the search results HTML.
+  const { output: urlsOutput } = await findBestUrlsFromHtmlPrompt({
     searchResultsHtml: searchResultsHtml,
   });
-  const lyricsUrl = urlOutput?.url;
-  if (!lyricsUrl) {
-    throw new Error('AI could not find a reliable URL from the search results.');
+  const lyricsUrls = urlsOutput?.urls;
+  if (!lyricsUrls || lyricsUrls.length === 0) {
+    throw new Error('AI could not find any reliable URLs from the search results.');
   }
   
-  try {
-    // Step 4: Fetch content from the chosen lyrics URL.
-    const content = await fetchUrlContent(lyricsUrl);
-    if (content.startsWith('Error:')) {
+  let lastError: Error | null = null;
+
+  // Step 4: Loop through the URLs and try to fetch lyrics.
+  for (const url of lyricsUrls) {
+    try {
+      // Step 4a: Fetch content from the chosen lyrics URL.
+      const content = await fetchUrlContent(url);
+      if (content.startsWith('Error:')) {
+        // This is a fetch error from our helper.
         throw new Error(content);
-    }
+      }
 
-    // Step 5: Extract song data from the content.
-    const { output: songData } = await extractFromContentPrompt({ content });
-    if (!songData) {
-      throw new Error('The AI failed to extract song information from the page content.');
-    }
-    if (!songData.lyrics || !songData.songTitle) {
-      throw new Error('Could not find lyrics or title in the page content.');
-    }
+      // Step 4b: Extract song data from the content.
+      const { output: songData } = await extractFromContentPrompt({ content });
+      if (!songData) {
+        throw new Error('The AI failed to extract song information from the page content.');
+      }
+      if (!songData.lyrics || !songData.songTitle) {
+        throw new Error('Could not find lyrics or title in the page content.');
+      }
 
-    // Step 6: Return the data with the source URL.
-    return { ...songData, sourceUrl: lyricsUrl };
-  } catch(e: any) {
-    // If anything in the try block fails, we re-throw with the URL for debugging.
-    throw new Error(`Failed to process lyrics from ${lyricsUrl}. Reason: ${e.message}`);
+      // Step 4c: Success! Return the data with the source URL.
+      console.log(`Successfully processed lyrics from ${url}`);
+      return { ...songData, sourceUrl: url };
+
+    } catch (e: any) {
+      console.error(`Attempt failed for ${url}: ${e.message}`);
+      lastError = new Error(`(from ${new URL(url).hostname}) ${e.message}`);
+      // Continue to the next URL
+    }
   }
+
+  // Step 5: If all attempts failed, throw an informative error.
+  throw new Error(`All attempts to fetch lyrics failed. Tried ${lyricsUrls.length} source(s). Last error: ${lastError?.message || 'Unknown error'}`);
 }
 
 
