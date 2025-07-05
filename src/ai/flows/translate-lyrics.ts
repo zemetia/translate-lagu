@@ -20,7 +20,7 @@ const TranslateLyricsInputSchema = z.object({
 export type TranslateLyricsInput = z.infer<typeof TranslateLyricsInputSchema>;
 
 const TranslateLyricsOutputSchema = z.object({
-  translatedLyrics: z.string().describe('The translated lyrics.'),
+  translatedLyrics: z.string().describe('The translated lyrics, with original and translated text interleaved using {tl} tags.'),
   detectedLanguage: z.enum(['en', 'id']).describe('The detected language code (en for English, id for Indonesian).'),
 });
 export type TranslateLyricsOutput = z.infer<typeof TranslateLyricsOutputSchema>;
@@ -37,27 +37,31 @@ const prompt = ai.definePrompt({
   output: {
     schema: TranslateLyricsOutputSchema,
   },
-  prompt: `You are a translator specializing in translating song lyrics between English and Indonesian.
+  prompt: `You are a professional songwriter and translator specializing in translating song lyrics between English and Indonesian.
+Your knowledge allows you to translate the song given while maintaining the beauty and art of each word, but keeping it as simple as possible. The result should not be "lebay" (over-the-top).
 
-You will detect the language of the input lyrics, and translate them to the target language, observing the translation mode.
+First, detect the language of the input lyrics.
+
+Then, translate the lyrics to the target language. The translated text for each line should be placed directly underneath the original line, enclosed in "{tl}" and "{/tl}" tags. Maintain the original section breaks (e.g., [Verse], [Chorus]).
+
+Example of the desired output format for a single line:
+Original Text
+{tl}Translated Text{/tl}
+
+You must maintain each section and line break from the original lyrics.
 
 Input Lyrics:
-{{lyrics}}
+{{{lyrics}}}
 
 Target Language: {{targetLanguage}}
 Translation Mode: {{translationMode}}
-
 {{#if refinementPrompt}}
-Refinement Prompt: {{refinementPrompt}}
+Refinement Prompt: {{{refinementPrompt}}}
 {{/if}}
 
-Output the translated lyrics and the detected language.
-
-Ensure that your output is valid JSON in the following format:
-{
-  "translatedLyrics": "translated lyrics here",
-  "detectedLanguage": "en" or "id"
-}
+Your final output must be a valid JSON object with two keys:
+1. "detectedLanguage": The detected language code of the input lyrics ('en' for English, 'id' for Indonesian).
+2. "translatedLyrics": The complete lyrics with the interleaved translation in the format described above.
 `,
 });
 
