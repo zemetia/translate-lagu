@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   LoaderCircle,
   Languages,
@@ -28,7 +29,7 @@ interface SearchResult {
 
 interface TranslationResult {
   original: string;
-  detectedLanguage: "en" | "id";
+  translationStyle: string;
   translated: string;
 }
 
@@ -98,7 +99,7 @@ export function TranslationClient() {
       } else if (result.data) {
         setTranslation({
           original: result.data.originalLyrics,
-          detectedLanguage: result.data.detectedLanguage,
+          translationStyle: result.data.translationStyle,
           translated: result.data.translatedLyrics,
         });
         setRefinementPrompt("");
@@ -270,7 +271,10 @@ Amazing grace, how sweet the sound..."
                         <span className="ml-2">Copy Formatted</span>
                     </Button>
                 </div>
-                <CardDescription>The translation is in blue. Use the refinement box below if needed.</CardDescription>
+                <div className="flex justify-between items-center pt-1">
+                  <CardDescription>The translation is in blue. Use the refinement box below if needed.</CardDescription>
+                  <Badge variant="outline">Style: {translation.translationStyle}</Badge>
+                </div>
               </CardHeader>
               <CardContent>
                 <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed bg-muted p-4 rounded-md h-96 overflow-y-auto">

@@ -18,8 +18,8 @@ export type TranslateLyricsInput = z.infer<typeof TranslateLyricsInputSchema>;
 
 const TranslateLyricsOutputSchema = z.object({
   translatedLyrics: z.string().describe('The translated lyrics, with original and translated text interleaved using {tl} tags.'),
-  detectedLanguage: z.enum(['en', 'id']).describe('The detected language code (en for English, id for Indonesian).'),
-  originalLyrics: z.string().describe('The original lyrics that were translated, either from input or from search.'),
+  translationStyle: z.string().describe("The detected nuance or style of the lyrics (e.g., Poetic, Hymn, Formal, Literal)."),
+  originalLyrics: z.string().describe('The original lyrics that were translated.'),
 });
 export type TranslateLyricsOutput = z.infer<typeof TranslateLyricsOutputSchema>;
 
@@ -38,30 +38,28 @@ const prompt = ai.definePrompt({
   output: {
     schema: TranslateLyricsOutputSchema,
   },
-  prompt: `You are a professional songwriter and translator specializing in translating song lyrics between English and Indonesian.
-Your knowledge allows you to translate the song given while maintaining the beauty and art of each word, but keeping it as simple as possible. The result should not be "lebay" (over-the-top).
+  prompt: `You are a professional songwriter and expert translator for English and Indonesian lyrics.
 
-First, you MUST detect whether the input lyrics are primarily in English ('en') or Indonesian ('id').
+Your tasks are:
+1.  **Analyze Nuance**: First, analyze the overall nuance of the input lyrics. Determine a suitable translation style. This could be "Poetic", "Hymn-like", "Literal", "Formal", or "Informal".
+2.  **Translate Line-by-Line**: Process the input lyrics. For EACH individual line, you must:
+    a. Detect if the line is English or Indonesian.
+    b. Translate it to the OTHER language. (English to Indonesian, Indonesian to English).
+    c. If a line is just a section marker like "[Chorus]", do not translate it, just reproduce it.
+3.  **Format Output**: Structure the result by placing the translated text directly underneath its original line, enclosed in "{tl}" and "{/tl}" tags. Preserve all original line breaks and section markers. The translation should maintain the beauty and art of the words, but be simple and natural (tidak terlalu lebay).
 
-Then, you MUST translate the lyrics to the OTHER language.
-- If the input is English, translate to Indonesian.
-- If the input is Indonesian, translate to English.
-
-The translated text for each line must be placed directly underneath the original line, enclosed in "{tl}" and "{/tl}" tags.
-It is crucial that you DO NOT alter the original text lines. The original lines must be preserved exactly as they are in the input.
-
-Example of the desired output format for a single line:
-Original Text
-{tl}Translated Text{/tl}
-
-You must maintain each section and line break from the original lyrics.
+Example of desired output format:
+Original Line 1
+{tl}Translated Line 1{/tl}
+Original Line 2
+{tl}Translated Line 2{/tl}
 
 Input Lyrics:
 {{{lyrics}}}
 
 Your final output must be a valid JSON object with three keys:
-1. "detectedLanguage": The detected language code of the input lyrics ('en' for English, 'id' for Indonesian).
-2. "translatedLyrics": The complete lyrics with the interleaved translation in the format described above (Original line, then translated line in tags).
+1. "translationStyle": The detected translation style you determined in step 1.
+2. "translatedLyrics": The complete lyrics with the interleaved translation in the format described above.
 3. "originalLyrics": The original lyrics from the input.
 `,
 });
