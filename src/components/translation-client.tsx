@@ -16,7 +16,7 @@ import {
   Feather,
   Sparkles,
   ArrowRight,
-  Info
+  Search
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 type TranslationMode = "poetic" | "literal";
 
 interface TranslationResult {
-  original: string;
+  original: string; // The original lyrics from either input or search
   artist: string;
   detectedLanguage: "en" | "id";
   translated: string;
@@ -33,6 +33,10 @@ interface TranslationResult {
 export function TranslationClient() {
   const [lyrics, setLyrics] = useState("");
   const [artist, setArtist] = useState("");
+  const [songTitle, setSongTitle] = useState("");
+  const [searchArtist, setSearchArtist] = useState("");
+  const [activeTab, setActiveTab] = useState("lyrics");
+
   const [mode, setMode] = useState<TranslationMode>("poetic");
   const [refinementPrompt, setRefinementPrompt] = useState("");
   const [translation, setTranslation] = useState<TranslationResult | null>(null);
@@ -41,9 +45,19 @@ export function TranslationClient() {
   const [isRefining, startRefinement] = useTransition();
   
   const { toast } = useToast();
+  
+  const isSearchMode = activeTab === "search";
 
   const onTranslate = async () => {
-    if (lyrics.trim().length < 10) {
+    if (isSearchMode && songTitle.trim().length < 3) {
+      toast({
+        variant: "destructive",
+        title: "Input too short",
+        description: "Please enter a song title to search.",
+      });
+      return;
+    }
+    if (!isSearchMode && lyrics.trim().length < 10) {
       toast({
         variant: "destructive",
         title: "Input too short",
@@ -51,11 +65,14 @@ export function TranslationClient() {
       });
       return;
     }
+
+    setTranslation(null); // Clear previous results
     startTranslation(async () => {
-      const result = await handleTranslation({
-        lyrics,
-        translationMode: mode,
-      });
+      const result = await handleTranslation(
+        isSearchMode
+          ? { songTitle, artist: searchArtist, translationMode: mode }
+          : { lyrics, translationMode: mode }
+      );
 
       if (result.error) {
         toast({
@@ -65,9 +82,14 @@ export function TranslationClient() {
         });
         setTranslation(null);
       } else if (result.data) {
+        // After a successful search, populate the lyrics textarea
+        if (isSearchMode && result.data.originalLyrics) {
+          setLyrics(result.data.originalLyrics);
+        }
+        
         setTranslation({
-          original: lyrics,
-          artist: artist,
+          original: result.data.originalLyrics, // Use the definitive original lyrics from the backend
+          artist: isSearchMode ? searchArtist : artist, // Use the relevant artist for display
           detectedLanguage: result.data.detectedLanguage,
           translated: result.data.translatedLyrics,
         });
@@ -115,16 +137,16 @@ export function TranslationClient() {
     <div className="w-full max-w-6xl mx-auto">
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="font-headline text-2xl">Enter Song Lyrics</CardTitle>
+          <CardTitle className="font-headline text-2xl">Enter or Search Lyrics</CardTitle>
           <CardDescription>
-            Provide lyrics and optional artist info to start.
+            You can either paste lyrics directly or search for a song by its title.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-           <Tabs defaultValue="lyrics" className="w-full">
+           <Tabs defaultValue="lyrics" className="w-full" onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="lyrics">Enter Lyrics</TabsTrigger>
-              <TabsTrigger value="search" disabled>Search Song (Coming Soon)</TabsTrigger>
+              <TabsTrigger value="search">Search Song</TabsTrigger>
             </TabsList>
             <TabsContent value="lyrics" className="pt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -148,36 +170,54 @@ export function TranslationClient() {
                     onChange={(e) => setArtist(e.target.value)}
                     aria-label="Artist or composer input"
                   />
-                  <div className="space-y-3 pt-3">
-                    <Label>Translation Mode</Label>
-                    <RadioGroup
-                      value={mode}
-                      onValueChange={(value: string) => setMode(value as TranslationMode)}
-                      className="flex gap-4"
-                    >
-                      <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
-                        <RadioGroupItem value="poetic" id="poetic" />
-                        <Feather className="h-5 w-5 text-primary" />
-                        <span>Poetic</span>
-                      </Label>
-                      <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
-                        <RadioGroupItem value="literal" id="literal" />
-                        <BookOpen className="h-5 w-5 text-primary" />
-                        <span>Literal</span>
-                      </Label>
-                    </RadioGroup>
-                  </div>
                 </div>
               </div>
             </TabsContent>
-            <TabsContent value="search">
-                <div className="flex flex-col items-center justify-center text-center p-8 border-dashed border-2 rounded-lg h-48">
-                    <Info className="h-8 w-8 text-muted-foreground mb-2"/>
-                    <p className="font-semibold">Feature Coming Soon</p>
-                    <p className="text-muted-foreground text-sm">Song search is not yet available. Please paste lyrics directly.</p>
-                </div>
+            <TabsContent value="search" className="pt-4">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="space-y-2">
+                    <Label htmlFor="song-title">Song Title</Label>
+                    <Input
+                      id="song-title"
+                      placeholder="e.g., Amazing Grace"
+                      value={songTitle}
+                      onChange={(e) => setSongTitle(e.target.value)}
+                      aria-label="Song title input for search"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="search-artist">Artist (Optional)</Label>
+                    <Input
+                      id="search-artist"
+                      placeholder="e.g., John Newton"
+                      value={searchArtist}
+                      onChange={(e) => setSearchArtist(e.target.value)}
+                      aria-label="Artist input for search"
+                    />
+                  </div>
+               </div>
             </TabsContent>
           </Tabs>
+          
+          <div className="space-y-3 pt-3">
+            <Label>Translation Mode</Label>
+            <RadioGroup
+              value={mode}
+              onValueChange={(value: string) => setMode(value as TranslationMode)}
+              className="flex gap-4"
+            >
+              <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
+                <RadioGroupItem value="poetic" id="poetic" />
+                <Feather className="h-5 w-5 text-primary" />
+                <span>Poetic</span>
+              </Label>
+              <Label className="flex items-center gap-2 cursor-pointer p-3 border rounded-md has-[input:checked]:bg-secondary has-[input:checked]:border-primary flex-1 justify-center transition-all">
+                <RadioGroupItem value="literal" id="literal" />
+                <BookOpen className="h-5 w-5 text-primary" />
+                <span>Literal</span>
+              </Label>
+            </RadioGroup>
+          </div>
 
           <div className="flex justify-end pt-4">
             <Button
@@ -188,9 +228,9 @@ export function TranslationClient() {
               {isTranslating ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
-                <Languages />
+                isSearchMode ? <Search /> : <Languages />
               )}
-              <span className="ml-2">Translate Lyrics</span>
+              <span className="ml-2">{isSearchMode ? 'Search & Translate' : 'Translate Lyrics'}</span>
             </Button>
           </div>
         </CardContent>

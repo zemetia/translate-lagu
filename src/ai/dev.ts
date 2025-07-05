@@ -3,3 +3,4 @@ config();
 
 import '@/ai/flows/refine-translation.ts';
 import '@/ai/flows/translate-lyrics.ts';
+import '@/ai/tools/search-lyrics';

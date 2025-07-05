@@ -4,12 +4,19 @@ import { translateLyrics, refineTranslation } from "@/ai/flows";
 import { z } from "zod";
 
 const translateSchema = z.object({
-  lyrics: z.string().min(10, "Please enter at least 10 characters of lyrics."),
+  lyrics: z.string().optional(),
+  songTitle: z.string().optional(),
+  artist: z.string().optional(),
   translationMode: z.enum(["poetic", "literal"]),
+}).refine(data => data.lyrics || data.songTitle, {
+    message: "Either lyrics or a song title must be provided.",
+    path: ["lyrics"],
 });
 
 export async function handleTranslation(input: {
-  lyrics: string;
+  lyrics?: string;
+  songTitle?: string;
+  artist?: string;
   translationMode: "poetic" | "literal";
 }) {
   const parsed = translateSchema.safeParse(input);
@@ -19,21 +26,25 @@ export async function handleTranslation(input: {
   }
 
   try {
-    const { lyrics, translationMode } = parsed.data;
+    const { lyrics, songTitle, artist, translationMode } = parsed.data;
     
-    // First, detect the language
+    // First, call to detect the language (and potentially search for lyrics).
+    // The targetLanguage is a dummy value; it will be corrected in the next step.
     const detectResult = await translateLyrics({
         lyrics,
-        targetLanguage: 'en', // Target doesn't matter for detection
+        songTitle,
+        artist,
+        targetLanguage: 'en', // Dummy target doesn't matter for detection
         translationMode
     });
     
     const detectedLanguage = detectResult.detectedLanguage;
     const targetLanguage = detectedLanguage === 'en' ? 'id' : 'en';
 
-    // Then, translate to the actual target language
+    // Then, translate to the actual target language.
+    // We pass back the originalLyrics from the first call to avoid a second search.
     const finalResult = await translateLyrics({
-        lyrics,
+        lyrics: detectResult.originalLyrics,
         targetLanguage,
         translationMode
     });
