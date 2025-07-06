@@ -3,7 +3,6 @@
 An AI-powered application designed to seamlessly translate song lyrics between English and Indonesian. This tool helps users not only get accurate translations but also understand the nuance and style of the original text, with features to refine and clean lyrics for the best results.
 
 ![Translate Lagu Screenshot](image.png)
-*Replace the placeholder with a screenshot of the running application.*
 
 ---
 
