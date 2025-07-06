@@ -2,7 +2,7 @@
 
 An AI-powered application designed to seamlessly translate song lyrics between English and Indonesian. This tool helps users not only get accurate translations but also understand the nuance and style of the original text, with features to refine and clean lyrics for the best results.
 
-![Translate Lagu Screenshot](https://placehold.co/800x600.png?text=App+Screenshot)
+![Translate Lagu Screenshot](image.png)
 *Replace the placeholder with a screenshot of the running application.*
 
 ---
@@ -93,5 +93,3 @@ To run this project locally, follow these steps.
 The application will be available at `http://localhost:9002`.
 
 ---
-
-This project was built with Firebase Studio.
