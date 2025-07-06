@@ -2,8 +2,8 @@
 /**
  * @fileOverview Flows for searching for songs and extracting lyrics.
  *
- * - searchSongCandidates: Finds a list of potential songs based on a query.
- * - getLyricsForSong: Finds the lyrics for a specific song title and artist by searching the web.
+ * - searchSongCandidates: Finds a list of potential songs based on a query using Brave Search.
+ * - getLyricsForSong: Finds the lyrics for a specific song title and artist by searching the web with Brave Search.
  * - extractSongFromUrl: Extracts song data from a given URL.
  */
 
@@ -23,34 +23,80 @@ import {
   SongDataSchema,
 } from '../schemas';
 
+// --- HELPERS ---
+
+/**
+ * Performs a web search using the Brave Search API.
+ * @param query The search query.
+ * @param count The number of results to return.
+ * @returns A promise that resolves to an array of search results.
+ */
+async function searchWithBrave(query: string, count = 10) {
+  const apiKey = process.env.BRAVE_API_KEY;
+  if (!apiKey) {
+    throw new Error('BRAVE_API_KEY is not set in the environment variables.');
+  }
+
+  const response = await fetch(
+    `https://api.search.brave.com/res/v1/web/search?${new URLSearchParams({
+      q: query,
+      count: count.toString(),
+      country: 'us',
+      search_lang: 'en',
+    })}`,
+    {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': apiKey,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("Brave Search API Error:", errorBody);
+    throw new Error(`Brave Search API request failed with status ${response.status}. Please check your API key and usage limits.`);
+  }
+
+  const data = await response.json();
+  return data.web?.results || [];
+}
+
+
 // --- PROMPTS ---
 
 const searchCandidatesPrompt = ai.definePrompt({
     name: 'searchSongCandidatesPrompt',
-    input: { schema: SearchSongsInputSchema },
+    input: { schema: z.object({ query: z.string(), searchResultsJson: z.string() }) },
     output: { schema: SearchSongCandidatesOutputSchema },
-    prompt: `You are a music search expert. Based on the user's query, find a list of up to 5 potential matching songs from the web. For each song, provide the title and the primary artist, composer, or church associated with it. Do not find lyrics yet.
+    prompt: `You are a music search expert. You are given JSON search results from the Brave Search API based on a user's query. Analyze the titles and descriptions to identify up to 5 potential matching songs. For each song, extract the title and the artist.
 
 User Query: {{{query}}}
+
+Brave Search Results (JSON):
+{{{searchResultsJson}}}
 
 Return a list of song candidates in the specified JSON format.`,
 });
 
-const findBestUrlsFromHtmlPrompt = ai.definePrompt({
-    name: 'findBestUrlsFromHtmlPrompt',
-    input: { schema: z.object({ searchResultsHtml: z.string().describe("The raw HTML content from a DuckDuckGo search results page.") }) },
-    output: { schema: z.object({ urls: z.array(z.string()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
-    prompt: `You are an AI assistant skilled at parsing raw HTML from a search results page. Your task is to analyze the provided HTML and identify up to 3 of the most reliable and trustworthy URLs for song lyrics.
+const findBestUrlsFromBraveResultsPrompt = ai.definePrompt({
+    name: 'findBestUrlsFromBraveResultsPrompt',
+    input: { schema: z.object({ searchQuery: z.string(), searchResultsJson: z.string().describe("The JSON string from a Brave Search API response.") }) },
+    output: { schema: z.object({ urls: z.array(z.string().url()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
+    prompt: `You are an AI assistant skilled at parsing JSON from the Brave Search API. Your task is to analyze the provided JSON and identify up to 3 of the most reliable and trustworthy URLs for song lyrics based on the user's search query.
 
 **CRITICAL INSTRUCTIONS:**
-1.  Examine the HTML for search result links, which are typically within \`<a>\` tags with a class like "result__a".
-2.  From these links, identify the ones that point to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
+1.  The JSON contains an array of search results, each with a 'title', 'url', and 'description'.
+2.  Examine these results to find links that point to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
 3.  You MUST IGNORE links to YouTube, Spotify, Apple Music, or other music streaming services. Also ignore ads or shopping results.
-4.  Choose the links that appear to be the most relevant and official results based on their title and snippet text in the HTML.
+4.  Choose the links that appear to be the most relevant and official results for the given search query.
 5.  Return ONLY a list of the best URLs (maximum of 3) you have found in the specified JSON format. Do not return any other text or explanation.
 
-Search Results HTML:
-{{{searchResultsHtml}}}
+Search Query:
+"{{{searchQuery}}}"
+
+Search Results JSON:
+{{{searchResultsJson}}}
 `,
 });
 
@@ -88,33 +134,39 @@ Raw Text Input:
  * Searches the web for song candidates based on a query. Returns a list of titles and artists.
  */
 export async function searchSongCandidates(input: SearchSongsInput): Promise<SearchSongCandidatesOutput> {
-  const { output } = await searchCandidatesPrompt(input);
+  const searchResults = await searchWithBrave(input.query, 10);
+  if (!searchResults || searchResults.length === 0) {
+      return { results: [] };
+  }
+
+  const { output } = await searchCandidatesPrompt({
+      query: input.query,
+      searchResultsJson: JSON.stringify(searchResults, null, 2),
+  });
   return output || { results: [] };
 }
 
 
 /**
- * Fetches the full lyrics for a given song title and artist by searching with DuckDuckGo,
- * finding reliable URLs from the HTML, trying each one, and then extracting the content.
+ * Fetches the full lyrics for a given song title and artist by searching with Brave Search,
+ * finding reliable URLs from the results, trying each one, and then extracting the content.
  */
 export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
   // Step 1: Construct a search query.
   const searchQuery = `lyrics for ${input.songTitle} by ${input.artist}`;
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
-
+  
   // Step 2: Fetch the search results page content.
-  const searchResultsHtml = await fetchUrlContent(searchUrl);
-  if (searchResultsHtml.startsWith('Error:')) {
-      throw new Error(`Failed to fetch search results from DuckDuckGo. Details: ${searchResultsHtml}`);
-  }
-  if (!searchResultsHtml) {
+  const searchResults = await searchWithBrave(searchQuery, 10);
+  if (!searchResults || searchResults.length === 0) {
     throw new Error(`No web search results found for "${searchQuery}".`);
   }
 
-  // Step 3: Use AI to find the best URLs from the search results HTML.
-  const { output: urlsOutput } = await findBestUrlsFromHtmlPrompt({
-    searchResultsHtml: searchResultsHtml,
+  // Step 3: Use AI to find the best URLs from the search results.
+  const { output: urlsOutput } = await findBestUrlsFromBraveResultsPrompt({
+    searchQuery: searchQuery,
+    searchResultsJson: JSON.stringify(searchResults, null, 2),
   });
+
   const lyricsUrls = urlsOutput?.urls;
   if (!lyricsUrls || lyricsUrls.length === 0) {
     throw new Error('AI could not find any reliable URLs from the search results.');
@@ -147,7 +199,12 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataW
 
     } catch (e: any) {
       console.error(`Attempt failed for ${url}: ${e.message}`);
-      lastError = new Error(`(from ${new URL(url).hostname}) ${e.message}`);
+      // Try to create a URL object to get the hostname for a cleaner error message
+      try {
+        lastError = new Error(`(from ${new URL(url).hostname}) ${e.message}`);
+      } catch (urlError) {
+        lastError = new Error(`(from invalid URL: ${url}) ${e.message}`);
+      }
       // Continue to the next URL
     }
   }
