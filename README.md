@@ -4,6 +4,8 @@ An AI-powered application designed to seamlessly translate song lyrics between E
 
 ![Translate Lagu Screenshot](image.png)
 
+You can access this project on: [Vercel Demo](https://zemetia-translate-lagu.vercel.app/)
+
 ---
 
 ## Features
