@@ -82,7 +82,7 @@ Return a list of song candidates in the specified JSON format.`,
 const findBestUrlsFromBraveResultsPrompt = ai.definePrompt({
     name: 'findBestUrlsFromBraveResultsPrompt',
     input: { schema: z.object({ searchQuery: z.string(), searchResultsJson: z.string().describe("The JSON string from a Brave Search API response.") }) },
-    output: { schema: z.object({ urls: z.array(z.string().url()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
+    output: { schema: z.object({ urls: z.array(z.string()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
     prompt: `You are an AI assistant skilled at parsing JSON from the Brave Search API. Your task is to analyze the provided JSON and identify up to 3 of the most reliable and trustworthy URLs for song lyrics based on the user's search query.
 
 **CRITICAL INSTRUCTIONS:**
