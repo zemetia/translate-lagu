@@ -33,6 +33,7 @@ import {
   Copy,
   X,
   Link as LinkIcon,
+  Wand2,
 } from "lucide-react";
 import type { SongCandidate, SongDataWithUrl } from "@/ai/schemas";
 
@@ -162,6 +163,52 @@ export function TranslationClient() {
         toast({ title: "Successfully fetched lyrics!" });
       }
     });
+  };
+
+  const onCleanUpLyrics = () => {
+    // A function to programmatically clean lyrics
+    const cleanup = (text: string): string => {
+      // 1. Remove section markers like [Verse], [Chorus], [Bridge], etc.
+      // This also handles markers with numbers like [Verse 1].
+      const withoutMarkers = text.replace(/^\s*\[.*?\]\s*$/gm, "");
+
+      // 2. Normalize newlines and split into paragraphs (blocks)
+      const blocks = withoutMarkers
+        .replace(/\r\n/g, "\n")
+        .split(/\n{2,}/)
+        .map((block) => block.trim())
+        .filter((block) => block.length > 0);
+
+      // 3. Keep only the first occurrence of each unique block to preserve order
+      const uniqueBlocks: string[] = [];
+      const seen = new Set<string>();
+      for (const block of blocks) {
+        if (!seen.has(block)) {
+          uniqueBlocks.push(block);
+          seen.add(block);
+        }
+      }
+
+      // 4. Join back with double newlines for clear separation
+      return uniqueBlocks.join("\n\n");
+    };
+
+    const cleaned = cleanup(lyrics);
+    if (lyrics.trim() !== cleaned.trim()) {
+      setLyrics(cleaned);
+      if (selectedSong) {
+        setLyricsEdited(true);
+      }
+      toast({
+        title: "Lyrics Cleaned",
+        description: "Removed markers and duplicate sections.",
+      });
+    } else {
+      toast({
+        title: "No changes needed",
+        description: "The lyrics are already clean.",
+      });
+    }
   };
 
   const onTranslate = async () => {
@@ -430,7 +477,15 @@ Amazing grace, how sweet the sound..."
                 className="h-64 resize-y font-mono"
                 aria-label="Song lyrics input"
               />
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end items-center pt-2 gap-2">
+                <Button
+                  onClick={onCleanUpLyrics}
+                  disabled={isTranslating || !lyrics}
+                  variant="outline"
+                >
+                  <Wand2 />
+                  <span className="ml-2">Clean Up</span>
+                </Button>
                 <Button
                   onClick={onTranslate}
                   disabled={isTranslating || !lyrics}
