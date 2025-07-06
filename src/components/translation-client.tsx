@@ -166,20 +166,13 @@ export function TranslationClient() {
   };
 
   const onCleanUpLyrics = () => {
-    // A function to programmatically clean lyrics
     const cleanup = (text: string): string => {
-      // 1. Remove section markers like [Verse], [Chorus], [Bridge], etc.
-      // This also handles markers with numbers like [Verse 1].
       const withoutMarkers = text.replace(/^\s*\[.*?\]\s*$/gm, "");
-
-      // 2. Normalize newlines and split into paragraphs (blocks)
       const blocks = withoutMarkers
         .replace(/\r\n/g, "\n")
         .split(/\n{2,}/)
         .map((block) => block.trim())
         .filter((block) => block.length > 0);
-
-      // 3. Keep only the first occurrence of each unique block to preserve order
       const uniqueBlocks: string[] = [];
       const seen = new Set<string>();
       for (const block of blocks) {
@@ -188,8 +181,6 @@ export function TranslationClient() {
           seen.add(block);
         }
       }
-
-      // 4. Join back with double newlines for clear separation
       return uniqueBlocks.join("\n\n");
     };
 
@@ -272,11 +263,11 @@ export function TranslationClient() {
   const handleCopy = () => {
     if (!translation) return;
     navigator.clipboard.writeText(translation.translated).then(() => {
-      toast({ title: "Formatted lyrics copied to clipboard!" });
+      toast({ title: "Copied all lyrics to clipboard!" });
     });
   };
-
-  const renderTranslation = (text: string) => {
+  
+  const renderBlockContent = (text: string) => {
     const parts = text.split(/(\{tl\}[\s\S]*?\{\/tl\})/g);
 
     return parts.map((part, index) => {
@@ -291,6 +282,32 @@ export function TranslationClient() {
       return <React.Fragment key={index}>{part}</React.Fragment>;
     });
   };
+
+  const LyricsBlock = ({ text }: { text: string }) => {
+    const [isHovered, setIsHovered] = useState(false);
+
+    const handleCopyBlock = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(text).then(() => {
+        toast({ title: "Block copied to clipboard!" });
+      });
+    };
+
+    return (
+      <div
+        className="relative p-2 rounded-md cursor-pointer hover:bg-background/80 dark:hover:bg-background/50 transition-colors"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onClick={handleCopyBlock}
+      >
+        {isHovered && (
+          <Copy className="absolute top-2 right-2 h-4 w-4 text-muted-foreground z-10" />
+        )}
+        <div className="whitespace-pre-wrap">{renderBlockContent(text)}</div>
+      </div>
+    );
+  };
+
 
   const clearSelectedSong = () => {
     setLyrics("");
@@ -528,20 +545,27 @@ Amazing grace, how sweet the sound..."
                   </CardTitle>
                   <Button variant="outline" size="sm" onClick={handleCopy}>
                     <Copy />
-                    <span className="ml-2">Copy Formatted</span>
+                    <span className="ml-2">Copy All</span>
                   </Button>
                 </div>
                 <div className="flex justify-between items-center pt-1">
-                  <CardDescription>The translation is in blue.</CardDescription>
+                  <CardDescription>
+                    The translation is in blue. Click any block to copy it.
+                  </CardDescription>
                   <Badge variant="outline">
                     Style: {translation.translationStyle}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent>
-                <pre className="whitespace-pre-wrap font-body text-sm leading-relaxed bg-muted p-4 rounded-md h-96 overflow-y-auto">
-                  {renderTranslation(translation.translated)}
-                </pre>
+                <div className="font-body text-sm leading-relaxed bg-muted p-2 rounded-md h-96 overflow-y-auto space-y-2">
+                  {translation.translated
+                    .split(/\n\s*\n/)
+                    .filter((b) => b.trim())
+                    .map((block, index) => (
+                      <LyricsBlock key={index} text={block.trim()} />
+                    ))}
+                </div>
               </CardContent>
               <div className="p-4 border-t bg-secondary/50 m-2 rounded-lg">
                 <Label
