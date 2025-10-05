@@ -8,8 +8,11 @@ import {
   handleRefinement,
   handleUrlExtraction,
   handleGetLyrics,
+  handleCleanLyrics,
 } from "@/app/actions";
+import { logUserAction } from "@/lib/log-user-action";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -61,8 +64,10 @@ export function TranslationClient() {
   const [isExtracting, startUrlExtraction] = useTransition();
   const [isTranslating, startTranslation] = useTransition();
   const [isRefining, startRefinement] = useTransition();
+  const [isCleaning, startCleaning] = useTransition();
 
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const onSearch = (formData: FormData) => {
     const query = formData.get("query") as string;
@@ -138,9 +143,18 @@ export function TranslationClient() {
   const onSelectSong = (song: SongCandidate) => {
     setSearchResults(null);
     startFetchingLyrics(async () => {
+      // Log song selection
+      if (user?.uid) {
+        await logUserAction(user.uid, "select_song", {
+          songTitle: song.songTitle,
+          artist: song.artist,
+        });
+      }
+
       const result = await handleGetLyrics({
         songTitle: song.songTitle,
         artist: song.artist,
+        uid: user?.uid || '',
       });
 
       if (result.error) {
@@ -165,41 +179,48 @@ export function TranslationClient() {
     });
   };
 
-  const onCleanUpLyrics = () => {
-    const cleanup = (text: string): string => {
-      const withoutMarkers = text.replace(/^\s*\[.*?\]\s*$/gm, "");
-      const blocks = withoutMarkers
-        .replace(/\r\n/g, "\n")
-        .split(/\n{2,}/)
-        .map((block) => block.trim())
-        .filter((block) => block.length > 0);
-      const uniqueBlocks: string[] = [];
-      const seen = new Set<string>();
-      for (const block of blocks) {
-        if (!seen.has(block)) {
-          uniqueBlocks.push(block);
-          seen.add(block);
+  const onCleanUpLyrics = async () => {
+    if (!lyrics || lyrics.trim().length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No lyrics to clean",
+        description: "Please load or enter some lyrics first.",
+      });
+      return;
+    }
+
+    startCleaning(async () => {
+      const result = await handleCleanLyrics({
+        lyrics,
+        uid: user?.uid || ''
+      });
+
+      if (result.error) {
+        toast({
+          variant: "destructive",
+          title: "Cleanup Failed",
+          description: result.error,
+        });
+      } else if (result.data) {
+        const cleaned = result.data.cleanedLyrics;
+
+        if (lyrics.trim() !== cleaned.trim()) {
+          setLyrics(cleaned);
+          if (selectedSong) {
+            setLyricsEdited(true);
+          }
+          toast({
+            title: "Lyrics Cleaned",
+            description: "Removed section markers, chords, and duplicate sections.",
+          });
+        } else {
+          toast({
+            title: "No changes needed",
+            description: "The lyrics are already clean.",
+          });
         }
       }
-      return uniqueBlocks.join("\n\n");
-    };
-
-    const cleaned = cleanup(lyrics);
-    if (lyrics.trim() !== cleaned.trim()) {
-      setLyrics(cleaned);
-      if (selectedSong) {
-        setLyricsEdited(true);
-      }
-      toast({
-        title: "Lyrics Cleaned",
-        description: "Removed markers and duplicate sections.",
-      });
-    } else {
-      toast({
-        title: "No changes needed",
-        description: "The lyrics are already clean.",
-      });
-    }
+    });
   };
 
   const onTranslate = async () => {
@@ -214,7 +235,7 @@ export function TranslationClient() {
 
     setTranslation(null);
     startTranslation(async () => {
-      const result = await handleTranslation({ lyrics });
+      const result = await handleTranslation({ lyrics, uid: user?.uid || '' });
 
       if (result.error) {
         toast({
@@ -242,6 +263,7 @@ export function TranslationClient() {
         originalText: translation.original,
         initialTranslation: translation.translated,
         refinementPrompt,
+        uid: user?.uid || '',
       });
 
       if (result.error) {
@@ -260,8 +282,14 @@ export function TranslationClient() {
     });
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!translation) return;
+
+    // Log copy all action
+    if (user?.uid) {
+      await logUserAction(user.uid, "copy_all");
+    }
+
     navigator.clipboard.writeText(translation.translated).then(() => {
       toast({ title: "Copied all lyrics to clipboard!" });
     });
@@ -286,8 +314,14 @@ export function TranslationClient() {
   const LyricsBlock = ({ text }: { text: string }) => {
     const [isHovered, setIsHovered] = useState(false);
 
-    const handleCopyBlock = (e: React.MouseEvent) => {
+    const handleCopyBlock = async (e: React.MouseEvent) => {
       e.stopPropagation();
+
+      // Log copy block action
+      if (user?.uid) {
+        await logUserAction(user.uid, "copy_block");
+      }
+
       navigator.clipboard.writeText(text).then(() => {
         toast({ title: "Block copied to clipboard!" });
       });
@@ -295,15 +329,17 @@ export function TranslationClient() {
 
     return (
       <div
-        className="relative p-2 rounded-md cursor-pointer hover:bg-background/80 dark:hover:bg-background/50 transition-colors"
+        className="relative p-4 rounded-lg cursor-pointer bg-card/50 hover:bg-card border-2 border-transparent hover:border-primary/30 transition-all duration-300 hover:shadow-md group"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={handleCopyBlock}
       >
         {isHovered && (
-          <Copy className="absolute top-2 right-2 h-4 w-4 text-muted-foreground z-10" />
+          <div className="absolute top-3 right-3 bg-primary text-primary-foreground p-1.5 rounded-md shadow-lg z-10 animate-scale-in">
+            <Copy className="h-3.5 w-3.5" />
+          </div>
         )}
-        <div className="whitespace-pre-wrap">{renderBlockContent(text)}</div>
+        <div className="whitespace-pre-wrap leading-relaxed">{renderBlockContent(text)}</div>
       </div>
     );
   };
@@ -319,18 +355,21 @@ export function TranslationClient() {
   const isLoading = isSearching || isExtracting;
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8">
-      <div className="grid md:grid-cols-2 gap-8">
+    <div className="w-full max-w-6xl mx-auto space-y-8">
+      <div className="grid lg:grid-cols-2 gap-6 md:gap-8">
         {/* INPUT COLUMN */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-headline">1. Get Lyrics</CardTitle>
-              <CardDescription>
+        <div className="space-y-6 animate-slide-up">
+          <Card className="card-hover border-2 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5">
+              <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                <span className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm">1</span>
+                Get Lyrics
+              </CardTitle>
+              <CardDescription className="text-base">
                 Search for a song by title or import it from a URL.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <Tabs defaultValue="search" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="search" disabled={isLoading}>
@@ -350,6 +389,7 @@ export function TranslationClient() {
                       className="flex-grow"
                       disabled={isLoading}
                     />
+                    <input type="hidden" name="uid" value={user?.uid || ''} />
                     <Button type="submit" disabled={isLoading}>
                       {isSearching ? (
                         <LoaderCircle className="animate-spin" />
@@ -371,6 +411,7 @@ export function TranslationClient() {
                       className="flex-grow"
                       disabled={isLoading}
                     />
+                    <input type="hidden" name="uid" value={user?.uid || ''} />
                     <Button type="submit" disabled={isLoading}>
                       {isExtracting ? (
                         <LoaderCircle className="animate-spin" />
@@ -386,40 +427,46 @@ export function TranslationClient() {
           </Card>
 
           {isLoading && (
-            <div className="text-center p-4 flex items-center justify-center gap-2 text-muted-foreground">
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-              <span>
-                {isExtracting
-                  ? "Extracting from URL..."
-                  : "Searching for songs..."}
-              </span>
-            </div>
+            <Card className="border-2 border-primary/20 bg-primary/5 animate-pulse-glow">
+              <CardContent className="text-center p-8 flex flex-col items-center justify-center gap-3">
+                <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+                <span className="text-muted-foreground font-medium">
+                  {isExtracting
+                    ? "Extracting from URL..."
+                    : "Searching for songs..."}
+                </span>
+              </CardContent>
+            </Card>
           )}
-          
+
           {isFetchingLyrics && (
-             <div className="text-center p-4 flex items-center justify-center gap-2 text-muted-foreground">
-              <LoaderCircle className="h-5 w-5 animate-spin" />
-              <span>Fetching lyrics for your selection...</span>
-            </div>
+            <Card className="border-2 border-primary/20 bg-primary/5 animate-pulse-glow">
+              <CardContent className="text-center p-8 flex flex-col items-center justify-center gap-3">
+                <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+                <span className="text-muted-foreground font-medium">Fetching lyrics for your selection...</span>
+              </CardContent>
+            </Card>
           )}
 
           {searchResults && searchResults.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline">Search Results</CardTitle>
+            <Card className="card-hover border-2 shadow-lg animate-scale-in">
+              <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5">
+                <CardTitle className="font-headline text-xl">Search Results</CardTitle>
                 <CardDescription>Select a song to continue</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-2 pt-6">
                 {searchResults.map((song, index) => (
                   <Button
                     key={index}
                     variant="outline"
-                    className="w-full justify-start h-auto p-4"
+                    className="w-full justify-start h-auto p-4 hover:bg-primary/5 hover:border-primary/50 transition-all duration-300 hover:scale-[1.02]"
                     onClick={() => onSelectSong(song)}
                   >
-                    <ListMusic className="text-primary mr-4" />
+                    <div className="mr-4 bg-primary/10 p-2 rounded-lg">
+                      <ListMusic className="text-primary h-5 w-5" />
+                    </div>
                     <div className="text-left">
-                      <p className="font-bold">{song.songTitle}</p>
+                      <p className="font-bold text-base">{song.songTitle}</p>
                       <p className="text-sm text-muted-foreground">
                         {song.artist}
                       </p>
@@ -430,13 +477,14 @@ export function TranslationClient() {
             </Card>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-headline">
-                2. Edit Lyrics & Translate
+          <Card className="card-hover border-2 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5">
+              <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                <span className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm">2</span>
+                Edit Lyrics & Translate
               </CardTitle>
               {selectedSong ? (
-                <div className="flex items-center justify-between pt-2 text-sm">
+                <div className="flex items-center justify-between pt-3 text-sm bg-card p-3 rounded-lg mt-2 border">
                   <div className="overflow-hidden">
                     <p className="font-bold truncate">{selectedSong.songTitle}</p>
                     <div className="flex items-center gap-2">
@@ -475,12 +523,12 @@ export function TranslationClient() {
                   </Button>
                 </div>
               ) : (
-                <CardDescription>
+                <CardDescription className="text-base mt-2">
                   Paste lyrics here, or get them via search/URL.
                 </CardDescription>
               )}
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-6">
               <Textarea
                 placeholder="[Verse 1]
 Amazing grace, how sweet the sound..."
@@ -494,26 +542,32 @@ Amazing grace, how sweet the sound..."
                 className="h-64 resize-y font-mono"
                 aria-label="Song lyrics input"
               />
-              <div className="flex justify-end items-center pt-2 gap-2">
+              <div className="flex justify-end items-center pt-2 gap-3">
                 <Button
                   onClick={onCleanUpLyrics}
-                  disabled={isTranslating || !lyrics}
+                  disabled={isTranslating || isCleaning || !lyrics}
                   variant="outline"
+                  className="hover:bg-accent/10 hover:border-accent transition-all"
                 >
-                  <Wand2 />
-                  <span className="ml-2">Clean Up</span>
+                  {isCleaning ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">{isCleaning ? "Cleaning..." : "Clean Up"}</span>
                 </Button>
                 <Button
                   onClick={onTranslate}
                   disabled={isTranslating || !lyrics}
                   size="lg"
+                  className="bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all hover:scale-105"
                 >
                   {isTranslating ? (
-                    <LoaderCircle className="animate-spin" />
+                    <LoaderCircle className="animate-spin h-5 w-5" />
                   ) : (
-                    <Languages />
+                    <Languages className="h-5 w-5" />
                   )}
-                  <span className="ml-2">Translate Lyrics</span>
+                  <span className="ml-2 font-semibold">Translate Lyrics</span>
                 </Button>
               </div>
             </CardContent>
@@ -521,44 +575,55 @@ Amazing grace, how sweet the sound..."
         </div>
 
         {/* OUTPUT COLUMN */}
-        <div className="space-y-6">
+        <div className="space-y-6 animate-slide-up [animation-delay:200ms]">
           {isTranslating && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-headline">
-                  3. Review and Refine
+            <Card className="border-2 border-primary/20 shadow-xl">
+              <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5">
+                <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                  <span className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm">3</span>
+                  Review and Refine
                 </CardTitle>
-                <CardDescription>Translating...</CardDescription>
+                <CardDescription className="text-base">Translating your lyrics...</CardDescription>
               </CardHeader>
-              <CardContent className="flex items-center justify-center p-16">
-                <LoaderCircle className="h-12 w-12 animate-spin text-primary" />
+              <CardContent className="flex flex-col items-center justify-center p-16 space-y-4">
+                <div className="relative">
+                  <LoaderCircle className="h-16 w-16 animate-spin text-primary" />
+                  <div className="absolute inset-0 h-16 w-16 rounded-full bg-primary/20 animate-ping" />
+                </div>
+                <p className="text-muted-foreground font-medium">Processing with AI...</p>
               </CardContent>
             </Card>
           )}
 
           {translation && !isTranslating && (
-            <Card className="sticky top-8">
-              <CardHeader>
+            <Card className="sticky top-8 card-hover border-2 shadow-xl animate-scale-in">
+              <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5">
                 <div className="flex justify-between items-center">
-                  <CardTitle className="font-headline">
-                    3. Review and Refine
+                  <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                    <span className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm">3</span>
+                    Review and Refine
                   </CardTitle>
-                  <Button variant="outline" size="sm" onClick={handleCopy}>
-                    <Copy />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopy}
+                    className="hover:bg-primary/10 hover:border-primary transition-all"
+                  >
+                    <Copy className="h-4 w-4" />
                     <span className="ml-2">Copy All</span>
                   </Button>
                 </div>
-                <div className="flex justify-between items-center pt-1">
-                  <CardDescription>
-                    The translation is in blue. Click any block to copy it.
+                <div className="flex justify-between items-center pt-2">
+                  <CardDescription className="text-sm">
+                    Translation in <span className="text-primary font-semibold">purple</span>. Click any block to copy.
                   </CardDescription>
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary">
                     Style: {translation.translationStyle}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="font-body text-sm leading-relaxed bg-muted p-2 rounded-md h-96 overflow-y-auto space-y-2">
+              <CardContent className="pt-6">
+                <div className="font-body text-base leading-relaxed bg-gradient-to-br from-muted/50 to-muted p-4 rounded-lg border-2 h-96 overflow-y-auto space-y-3 shadow-inner">
                   {translation.translated
                     .split(/\n\s*\n/)
                     .filter((b) => b.trim())
@@ -567,15 +632,12 @@ Amazing grace, how sweet the sound..."
                     ))}
                 </div>
               </CardContent>
-              <div className="p-4 border-t bg-secondary/50 m-2 rounded-lg">
+              <div className="p-4 border-t bg-gradient-to-r from-accent/5 to-primary/5 m-2 rounded-lg border">
                 <Label
                   htmlFor="refine"
-                  className="font-bold flex items-center gap-2 mb-2"
+                  className="font-bold flex items-center gap-2 mb-3 text-base"
                 >
-                  <Sparkles
-                    className="h-5 w-5 text-accent-foreground"
-                    style={{ color: "hsl(var(--accent))" }}
-                  />
+                  <Sparkles className="h-5 w-5 text-accent" />
                   Refine with AI
                 </Label>
                 <div className="flex gap-2">
@@ -585,20 +647,17 @@ Amazing grace, how sweet the sound..."
                     value={refinementPrompt}
                     onChange={(e) => setRefinementPrompt(e.target.value)}
                     disabled={isRefining}
+                    className="border-2 focus:border-accent"
                   />
                   <Button
                     onClick={onRefine}
                     disabled={isRefining || !refinementPrompt}
-                    variant="default"
-                    style={{
-                      backgroundColor: "hsl(var(--accent))",
-                      color: "hsl(var(--accent-foreground))",
-                    }}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg hover:shadow-xl transition-all hover:scale-105"
                   >
                     {isRefining ? (
-                      <LoaderCircle className="animate-spin" />
+                      <LoaderCircle className="animate-spin h-5 w-5" />
                     ) : (
-                      <ArrowRight />
+                      <ArrowRight className="h-5 w-5" />
                     )}
                     <span className="sr-only">Refine</span>
                   </Button>

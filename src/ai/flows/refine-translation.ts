@@ -7,7 +7,7 @@
  * - refineTranslation - A function that refines an existing translation using AI and user prompts.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, createAIInstance} from '@/ai/genkit';
 import {
   RefineTranslationInput,
   RefineTranslationInputSchema,
@@ -16,16 +16,13 @@ import {
 } from '../schemas';
 
 export async function refineTranslation(
-  input: RefineTranslationInput
+  input: RefineTranslationInput,
+  apiKey?: string
 ): Promise<RefineTranslationOutput> {
-  return refineTranslationFlow(input);
+  return refineTranslationFlow(input, apiKey);
 }
 
-const prompt = ai.definePrompt({
-  name: 'refineTranslationPrompt',
-  input: {schema: RefineTranslationInputSchema},
-  output: {schema: RefineTranslationOutputSchema},
-  prompt: `You are a professional songwriter and expert translation refiner.
+const promptTemplate = `You are a professional songwriter and expert translation refiner.
 
 You are given an original text, an initial translation, and a user prompt describing how to refine the translation. The initial translation contains both original and translated lines, with translations marked by "{tl}" and "{/tl}" tags.
 
@@ -43,17 +40,22 @@ User Refinement Prompt:
 {{{refinementPrompt}}}
 
 Now, provide the complete, refined text in a valid JSON format with a single key "refinedTranslation".
-`,
-});
+`;
 
-const refineTranslationFlow = ai.defineFlow(
-  {
-    name: 'refineTranslationFlow',
-    inputSchema: RefineTranslationInputSchema,
-    outputSchema: RefineTranslationOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
-  }
-);
+async function refineTranslationFlow(
+  input: RefineTranslationInput,
+  apiKey?: string
+): Promise<RefineTranslationOutput> {
+  // Use user's API key if provided, otherwise fall back to default
+  const aiInstance = apiKey ? createAIInstance(apiKey) : ai;
+
+  const prompt = aiInstance.definePrompt({
+    name: 'refineTranslationPromptUser',
+    input: {schema: RefineTranslationInputSchema},
+    output: {schema: RefineTranslationOutputSchema},
+    prompt: promptTemplate,
+  });
+
+  const {output} = await prompt(input);
+  return output!;
+}

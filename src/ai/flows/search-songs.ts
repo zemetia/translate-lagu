@@ -7,7 +7,7 @@
  * - extractSongFromUrl: Extracts song data from a given URL.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, createAIInstance} from '@/ai/genkit';
 import {z} from 'zod';
 import { fetchUrlContent } from '../tools/search-lyrics';
 import {
@@ -133,13 +133,30 @@ Raw Text Input:
 /**
  * Searches the web for song candidates based on a query. Returns a list of titles and artists.
  */
-export async function searchSongCandidates(input: SearchSongsInput): Promise<SearchSongCandidatesOutput> {
+export async function searchSongCandidates(input: SearchSongsInput, apiKey?: string): Promise<SearchSongCandidatesOutput> {
   const searchResults = await searchWithBrave(input.query, 10);
   if (!searchResults || searchResults.length === 0) {
       return { results: [] };
   }
 
-  const { output } = await searchCandidatesPrompt({
+  // Use user's API key if provided, otherwise fall back to default
+  const aiInstance = apiKey ? createAIInstance(apiKey) : ai;
+
+  const userSearchCandidatesPrompt = aiInstance.definePrompt({
+    name: 'searchSongCandidatesPrompt',
+    input: { schema: z.object({ query: z.string(), searchResultsJson: z.string() }) },
+    output: { schema: SearchSongCandidatesOutputSchema },
+    prompt: `You are a music search expert. You are given JSON search results from the Brave Search API based on a user's query. Analyze the titles and descriptions to identify up to 5 potential matching songs. For each song, extract the title and the artist.
+
+User Query: {{{query}}}
+
+Brave Search Results (JSON):
+{{{searchResultsJson}}}
+
+Return a list of song candidates in the specified JSON format.`,
+  });
+
+  const { output } = await userSearchCandidatesPrompt({
       query: input.query,
       searchResultsJson: JSON.stringify(searchResults, null, 2),
   });
@@ -151,7 +168,7 @@ export async function searchSongCandidates(input: SearchSongsInput): Promise<Sea
  * Fetches the full lyrics for a given song title and artist by searching with Brave Search,
  * finding reliable URLs from the results, trying each one, and then extracting the content.
  */
-export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataWithUrl> {
+export async function getLyricsForSong(input: GetLyricsInput, apiKey?: string): Promise<SongDataWithUrl> {
   // Step 1: Construct a search query.
   const searchQuery = `lyrics for ${input.songTitle} by ${input.artist}`;
   
@@ -162,7 +179,30 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataW
   }
 
   // Step 3: Use AI to find the best URLs from the search results.
-  const { output: urlsOutput } = await findBestUrlsFromBraveResultsPrompt({
+  const aiInstance = apiKey ? createAIInstance(apiKey) : ai;
+
+  const userFindBestUrlsPrompt = aiInstance.definePrompt({
+    name: 'findBestUrlsFromBraveResultsPrompt',
+    input: { schema: z.object({ searchQuery: z.string(), searchResultsJson: z.string().describe("The JSON string from a Brave Search API response.") }) },
+    output: { schema: z.object({ urls: z.array(z.string()).describe("A list of up to 3 of the most reliable public URLs for the song lyrics found in the search results.") }) },
+    prompt: `You are an AI assistant skilled at parsing JSON from the Brave Search API. Your task is to analyze the provided JSON and identify up to 3 of the most reliable and trustworthy URLs for song lyrics based on the user's search query.
+
+**CRITICAL INSTRUCTIONS:**
+1.  The JSON contains an array of search results, each with a 'title', 'url', and 'description'.
+2.  Examine these results to find links that point to a dedicated and reputable lyric website (e.g., genius.com, azlyrics.com, songlyrics.com, letsingit.com).
+3.  You MUST IGNORE links to YouTube, Spotify, Apple Music, or other music streaming services. Also ignore ads or shopping results.
+4.  Choose the links that appear to be the most relevant and official results for the given search query.
+5.  Return ONLY a list of the best URLs (maximum of 3) you have found in the specified JSON format. Do not return any other text or explanation.
+
+Search Query:
+"{{{searchQuery}}}"
+
+Search Results JSON:
+{{{searchResultsJson}}}
+`,
+  });
+
+  const { output: urlsOutput } = await userFindBestUrlsPrompt({
     searchQuery: searchQuery,
     searchResultsJson: JSON.stringify(searchResults, null, 2),
   });
@@ -185,7 +225,33 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataW
       }
 
       // Step 4b: Extract song data from the content.
-      const { output: songData } = await extractFromContentPrompt({ content });
+      const userExtractPrompt = aiInstance.definePrompt({
+        name: 'extractFromContentPrompt',
+        input: { schema: z.object({ content: z.string() }) },
+        output: { schema: SongDataSchema },
+        prompt: `You are an expert AI system designed to extract song information from the raw text content of a webpage.
+
+Your process is as follows:
+1.  From the raw text provided below, you will extract three pieces of information: songTitle, artist, and lyrics.
+2.  When processing the text to find the lyrics, you must follow these strict rules:
+    a.  **Identify and Isolate**: Your primary task is to intelligently identify and isolate the song lyrics from the surrounding text.
+    b.  **Remove Boilerplate**: Discard all irrelevant non-lyric content, such as website navigation, advertisements, article headers/footers, related links, and comment sections.
+    c.  **Preserve Original Words**: You MUST NOT add, change, or interpret the words of the lyrics. The output must be a direct transcription of the original song words.
+    d.  **Clean Formatting**:
+        - Remove any numerical line markers (e.g., "1.", "2.").
+        - Ensure there is only a single blank line between sections (like verses or choruses).
+        - Preserve and standardize common markers like [Chorus], [Verse 1], and [Bridge]. Do not invent these markers if they are not present in the original text.
+3.  Return the extracted information in the specified JSON format. If a piece of information cannot be reliably found, return an empty string for the title/lyrics or 'Unknown' for the artist.
+
+Raw Text Input:
+{{{content}}}
+`,
+        config: {
+          temperature: 0.2,
+        },
+      });
+
+      const { output: songData } = await userExtractPrompt({ content });
       if (!songData) {
         throw new Error('The AI failed to extract song information from the page content.');
       }
@@ -217,7 +283,7 @@ export async function getLyricsForSong(input: GetLyricsInput): Promise<SongDataW
 /**
  * Extracts song information from a user-provided URL.
  */
-export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promise<ExtractSongFromUrlOutput> {
+export async function extractSongFromUrl(input: ExtractSongFromUrlInput, apiKey?: string): Promise<ExtractSongFromUrlOutput> {
   const { url } = input;
   try {
     // Step 1: Fetch content using the regular function
@@ -225,9 +291,37 @@ export async function extractSongFromUrl(input: ExtractSongFromUrlInput): Promis
     if (content.startsWith('Error:')) {
         throw new Error(content);
     }
-    
-    // Step 2: Extract data using the AI prompt
-    const { output } = await extractFromContentPrompt({ content });
+
+    // Step 2: Extract data using the AI prompt with user's API key
+    const aiInstance = apiKey ? createAIInstance(apiKey) : ai;
+
+    const userExtractPrompt = aiInstance.definePrompt({
+      name: 'extractFromContentPromptUser',
+      input: { schema: z.object({ content: z.string() }) },
+      output: { schema: SongDataSchema },
+      prompt: `You are an expert AI system designed to extract song information from the raw text content of a webpage.
+
+Your process is as follows:
+1.  From the raw text provided below, you will extract three pieces of information: songTitle, artist, and lyrics.
+2.  When processing the text to find the lyrics, you must follow these strict rules:
+    a.  **Identify and Isolate**: Your primary task is to intelligently identify and isolate the song lyrics from the surrounding text.
+    b.  **Remove Boilerplate**: Discard all irrelevant non-lyric content, such as website navigation, advertisements, article headers/footers, related links, and comment sections.
+    c.  **Preserve Original Words**: You MUST NOT add, change, or interpret the words of the lyrics. The output must be a direct transcription of the original song words.
+    d.  **Clean Formatting**:
+        - Remove any numerical line markers (e.g., "1.", "2.").
+        - Ensure there is only a single blank line between sections (like verses or choruses).
+        - Preserve and standardize common markers like [Chorus], [Verse 1], and [Bridge]. Do not invent these markers if they are not present in the original text.
+3.  Return the extracted information in the specified JSON format. If a piece of information cannot be reliably found, return an empty string for the title/lyrics or 'Unknown' for the artist.
+
+Raw Text Input:
+{{{content}}}
+`,
+      config: {
+        temperature: 0.2,
+      },
+    });
+
+    const { output } = await userExtractPrompt({ content });
     if (!output) {
       throw new Error('The AI failed to extract song information from the provided URL.');
     }
